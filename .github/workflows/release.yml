@@ -1,0 +1,125 @@
+name: Release Builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+      - name: Go modules
+        run: go mod download
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+      - name: Build app (macOS)
+        run: |
+          chmod +x kitty
+          ./kitty build
+      - name: Remove quarantine and ad-hoc sign
+        run: |
+          xattr -cr build/bin/Kitty.app || true
+          codesign --force --deep --options runtime --sign - build/bin/Kitty.app
+          codesign -vv build/bin/Kitty.app
+      - name: Prepare DMG assets
+        run: |
+          mkdir -p dist/dmg
+          cp -R build/bin/Kitty.app dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          # minimalist gradient background
+          cat > dist/dmg/background.png <<'EOF'
+          iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAcUlEQVR4nO3RMQ0AMAzDsP3/f7EZkiF0U9nKgR0q6TZ6A8MBgMCBEBgMAgQGAwCBAQDCIAhgMAgQGAwCBAQDCIAhgMBBAMDgQBAwODAEAAw4GAQDDgYAQDDgYBAAw4GAQDDgYBAAw4GAQDDgYBAAw4HgnQCo5bQx3wAAAABJRU5ErkJggg==
+          EOF
+          mkdir -p dist/dmg/.background
+          mv dist/dmg/background.png dist/dmg/.background/background.png
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "Kitty" -srcfolder dist/dmg -ov -format UDZO -fs HFS+ -imagekey zlib-level=9 Kitty-temp.dmg
+          mkdir -p dist/mounted
+          hdiutil attach Kitty-temp.dmg -mountpoint dist/mounted -nobrowse
+          cp build/icons/icon.icns dist/mounted/.VolumeIcon.icns || true
+          SetFile -c icnC dist/mounted/.VolumeIcon.icns || true
+          hdiutil detach dist/mounted
+          hdiutil convert Kitty-temp.dmg -format UDZO -imagekey zlib-level=9 -o Kitty.dmg
+      - name: Upload artifact (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kitty-macos
+          path: Kitty.dmg
+      - name: Publish release assets (macOS)
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: Kitty.dmg
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+        shell: pwsh
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+        shell: pwsh
+      - name: Go modules
+        run: go mod download
+        shell: pwsh
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+        shell: pwsh
+      - name: Build app (Windows)
+        run: wails build -clean -platform windows/amd64
+        shell: pwsh
+      - name: Build installer (EXE)
+        run: |
+          # ensure output directories exist for Inno
+          New-Item -ItemType Directory -Force -Path build\bin | Out-Null
+          New-Item -ItemType Directory -Force -Path build\icons | Out-Null
+          $version = (Get-Item build/bin/Kitty.exe).VersionInfo.ProductVersion
+          if (-not $version) { $version = "1.0.0" }
+          if (-not (Test-Path build/icons/icon.ico)) {
+            Copy-Item -Path build\bin\appicon.ico -Destination build\icons\icon.ico -ErrorAction Ignore
+            Copy-Item -Path build\bin\icon.ico -Destination build\icons\icon.ico -ErrorAction Ignore
+            Copy-Item -Path build\icons\appicon.ico -Destination build\icons\icon.ico -ErrorAction Ignore
+          }
+          $isccCandidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw "Inno Setup (ISCC.exe) not found." }
+          & $iscc "/dAppVersionOverride=$version" "installer\kitty.iss"
+        shell: pwsh
+      - name: Upload artifact (Windows installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kitty-windows
+          path: build/bin/Kitty-Installer.exe
+      - name: Publish release assets (Windows installer)
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/bin/Kitty-Installer.exe
