@@ -1,0 +1,21 @@
+//go:build !windows
+
+package downloader
+
+import (
+	"os/exec"
+	"syscall"
+)
+
+func configureCmd(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+}
+
+func killProcessTree(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+}

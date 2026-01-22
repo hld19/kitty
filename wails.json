@@ -1,0 +1,30 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Kitty",
+  "outputfilename": "kitty",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "ayoub",
+    "email": "lolol"
+  },
+  "info": {
+    "productName": "Kitty",
+    "productVersion": "1.0.0",
+    "comments": "",
+    "copyright": "(MI)"
+  },
+  "platforms": {
+    "windows": {
+      "icon": "build/icons/icon.ico"
+    },
+    "darwin": {
+      "icon": "build/icons/icon.icns"
+    },
+    "linux": {
+      "icon": "build/icons/icon.png"
+    }
+  }
+}

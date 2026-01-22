@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+  }
+  #root {
+    width: 100%;
+    height: 100%;
+    background: #0b0b0f;
+    overflow: hidden;
+  }
+  body {
+    @apply text-neutral-200;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: #0b0b0f;
+  }
+
+  .window-drag {
+    -webkit-app-region: drag;
+    --wails-draggable: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+    --wails-draggable: no-drag;
+  }
+}
+
+@layer components {
+  .spinner-circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.15);
+    border-top-color: rgba(255,255,255,0.8);
+    animation: spin 0.8s linear infinite;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  .pro-panel {
+    @apply bg-neutral-900/30 backdrop-blur-xl border border-white/5;
+  }
+  
+  .pro-input {
+    @apply bg-neutral-900/50 border border-white/5 rounded-lg px-3 py-2.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-neutral-600 focus:bg-neutral-900 transition-all w-full;
+  }
+
+  .pro-label {
+    @apply text-[11px] font-medium text-neutral-500 mb-1.5 block ml-0.5;
+  }
+  
+  .pro-button {
+    @apply bg-white text-black hover:bg-neutral-200 active:scale-95 border border-transparent rounded-lg px-4 py-2 text-xs font-medium transition-all shadow-lg shadow-white/5;
+  }
+  
+  .pro-button-secondary {
+    @apply bg-neutral-800/50 text-neutral-300 hover:bg-neutral-800 hover:text-white border border-white/5 rounded-lg px-4 py-2 text-xs font-medium transition-all;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05), inset 0 2px 6px rgba(0,0,0,0.45);
+    transition: background-color 150ms ease, box-shadow 150ms ease;
+  }
+  body:hover ::-webkit-scrollbar-thumb,
+  body:active ::-webkit-scrollbar-thumb {
+    background-color: #1f1f26;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15), inset 0 3px 8px rgba(0,0,0,0.6);
+  }
+}

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CMD="${1:-help}"
+shift || true
+
+export GOCACHE="${GOCACHE:-/tmp/go-build}"
+
+run_install() {
+  npm install --prefix "$ROOT/frontend"
+  go mod download
+}
+
+case "$CMD" in
+  install)
+    run_install
+    ;;
+  dev)
+    run_install
+    wails dev
+    ;;
+  build)
+    run_install
+    wails build
+    if command -v xattr >/dev/null 2>&1; then
+      xattr -dr com.apple.quarantine "$ROOT/build/bin/Kitty.app" 2>/dev/null || true
+    fi
+    ;;
+  clean)
+    rm -rf "$ROOT/frontend/dist" "$ROOT/build/bin" "$ROOT/dist"
+    ;;
+  help|*)
+    cat <<'USAGE'
+Kitty project helper
+
+Usage:
+  ./kitty install   Install frontend + Go deps
+  ./kitty dev       Run Wails dev server with hot reload
+  ./kitty build     Create a production build
+  ./kitty clean     Remove build artifacts
+USAGE
+    ;;
+ esac

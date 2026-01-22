@@ -1,0 +1,8 @@
+frontend/wailsjs/** linguist-generated
+frontend/node_modules/** linguist-vendored
+frontend/**/*.ts linguist-vendored
+frontend/**/*.tsx linguist-vendored
+build/** linguist-vendored
+build/windows/installer/** linguist-vendored
+build/windows/**/*.nsi linguist-vendored
+api/** linguist-vendored
