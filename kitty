@@ -7,6 +7,28 @@ shift || true
 
 export GOCACHE="${GOCACHE:-/tmp/go-build}"
 
+ensure_wails() {
+  if command -v wails >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "[kitty] wails not found; installing github.com/wailsapp/wails/v2/cmd/wails@v2.10.2 ..."
+
+  if ! command -v go >/dev/null 2>&1; then
+    echo "[kitty] Go is required to build the app. Install Go 1.21+ and retry." >&2
+    exit 1
+  fi
+
+  if ! go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2; then
+    echo "[kitty] failed to install wails CLI" >&2
+    exit 1
+  fi
+
+  # Make sure the freshly installed binary is on PATH for this script.
+  BIN_DIR="${GOBIN:-$(go env GOPATH)/bin}"
+  export PATH="$BIN_DIR:$PATH"
+}
+
 run_install() {
   npm install --prefix "$ROOT/frontend"
   go mod download
@@ -17,10 +39,12 @@ case "$CMD" in
     run_install
     ;;
   dev)
+    ensure_wails
     run_install
     wails dev
     ;;
   build)
+    ensure_wails
     run_install
     wails build
     if command -v xattr >/dev/null 2>&1; then
