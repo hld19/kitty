@@ -109,6 +109,7 @@ export function useMetadata() {
         isSyncing,
         hadCache,
         error,
+        clearError: () => setError(null),
         importFiles,
         addFilesByPath,
         selectTrack,

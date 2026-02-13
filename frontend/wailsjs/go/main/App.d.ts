@@ -26,6 +26,8 @@ export function PauseAudio():Promise<void>;
 
 export function PlayAudio():Promise<void>;
 
+export function ResetAppData():Promise<void>;
+
 export function SaveLibrary(arg1:Array<string>):Promise<void>;
 
 export function SaveMetadata(arg1:metadata.TrackMetadata):Promise<void>;
