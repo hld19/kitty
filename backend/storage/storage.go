@@ -63,3 +63,16 @@ func LoadLibrary() ([]string, error) {
 	}
 	return lib.Files, nil
 }
+
+func ClearLibrary() error {
+	paths := []string{GetConfigPath(), getLegacyConfigPath()}
+	var firstErr error
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
