@@ -18,55 +18,167 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version-file: 'go.mod'
       - uses: actions/setup-node@v4
         with:
           node-version: '18'
+      - name: Install cobalt deps (pnpm)
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.6.0 --activate
+          pnpm install --frozen-lockfile
       - name: Install frontend deps
         run: npm ci --prefix frontend
       - name: Go modules
         run: go mod download
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
-      - name: Build app (macOS)
+      - name: Build app (macOS, universal)
         run: |
           chmod +x kitty
-          ./kitty build
+          wails build -clean -platform darwin/universal
+          ./kitty bundle
+      - name: Verify app bundle (macOS)
+        run: |
+          set -euo pipefail
+          test -f build/bin/Kitty.app/Contents/MacOS/kitty
+          file build/bin/Kitty.app/Contents/MacOS/kitty
       - name: Remove quarantine and ad-hoc sign
         run: |
           xattr -cr build/bin/Kitty.app || true
           codesign --force --deep --options runtime --sign - build/bin/Kitty.app
           codesign -vv build/bin/Kitty.app
-      - name: Prepare DMG assets
+      - name: Install DMG tooling
         run: |
-          mkdir -p dist/dmg
-          cp -R build/bin/Kitty.app dist/dmg/
-          ln -s /Applications dist/dmg/Applications
-          # minimalist gradient background
-          cat > dist/dmg/background.png <<'EOF'
-          iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAcUlEQVR4nO3RMQ0AMAzDsP3/f7EZkiF0U9nKgR0q6TZ6A8MBgMCBEBgMAgQGAwCBAQDCIAhgMAgQGAwCBAQDCIAhgMBBAMDgQBAwODAEAAw4GAQDDgYAQDDgYBAAw4GAQDDgYBAAw4GAQDDgYBAAw4HgnQCo5bQx3wAAAABJRU5ErkJggg==
-          EOF
-          mkdir -p dist/dmg/.background
-          mv dist/dmg/background.png dist/dmg/.background/background.png
+          brew install create-dmg
       - name: Create DMG
         run: |
-          hdiutil create -volname "Kitty" -srcfolder dist/dmg -ov -format UDZO -fs HFS+ -imagekey zlib-level=9 Kitty-temp.dmg
-          mkdir -p dist/mounted
-          hdiutil attach Kitty-temp.dmg -mountpoint dist/mounted -nobrowse
-          cp build/icons/icon.icns dist/mounted/.VolumeIcon.icns || true
-          SetFile -c icnC dist/mounted/.VolumeIcon.icns || true
-          hdiutil detach dist/mounted
-          hdiutil convert Kitty-temp.dmg -format UDZO -imagekey zlib-level=9 -o Kitty.dmg
+          set -euo pipefail
+
+          rm -f Kitty.dmg
+          rm -rf dist/dmg
+          mkdir -p dist/dmg
+          cp -R build/bin/Kitty.app dist/dmg/Kitty.app
+
+          # Generate a simple 600x400 background using the repo banner on the app theme color.
+          rm -f dist/dmg-background.png
+          sips -Z 600 top.png --out dist/dmg-background.png >/dev/null
+          sips --padToHeightWidth 400 600 --padColor 0b0b0f dist/dmg-background.png --out dist/dmg-background.png >/dev/null
+
+          create-dmg \
+            --volname "Kitty" \
+            --volicon "build/icons/icon.icns" \
+            --background "dist/dmg-background.png" \
+            --window-pos 200 120 \
+            --window-size 640 420 \
+            --icon-size 128 \
+            --hide-extension "Kitty.app" \
+            --icon "Kitty.app" 180 210 \
+            --app-drop-link 460 210 \
+            "Kitty.dmg" \
+            "dist/dmg"
+      - name: Create PKG (macOS)
+        run: |
+          set -euo pipefail
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/bin/Kitty.app/Contents/Info.plist)"
+          if [[ -z "${VERSION}" ]]; then VERSION="1.0.0"; fi
+
+          rm -rf dist/pkg
+          mkdir -p dist/pkg/root/Applications
+          cp -R build/bin/Kitty.app dist/pkg/root/Applications/Kitty.app
+
+          mkdir -p dist/pkg/resources
+          cp top.png dist/pkg/resources/banner.png
+          cp build/appicon.png dist/pkg/resources/appicon.png
+
+          cat > dist/pkg/resources/welcome.html <<'EOF'
+          <!doctype html>
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <style>
+                :root { color-scheme: light; }
+                body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; color:#111; }
+                .hero { width:100%; height:auto; display:block; }
+                .wrap { padding: 18px 18px 16px; }
+                .row { display:flex; align-items:center; gap: 14px; }
+                .icon { width: 64px; height: 64px; border-radius: 14px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); }
+                h1 { margin:0; font-size: 22px; letter-spacing: -0.02em; }
+                p { margin: 10px 0 0; font-size: 12px; line-height: 1.55; color:#333; }
+                .pill { display:inline-block; margin-top: 10px; font-size: 11px; padding: 6px 10px; border-radius: 999px; background: rgba(0,0,0,0.06); color:#111; }
+              </style>
+            </head>
+            <body>
+              <img class="hero" src="banner.png" alt="Kitty" />
+              <div class="wrap">
+                <div class="row">
+                  <img class="icon" src="appicon.png" alt="Kitty icon" />
+                  <div>
+                    <h1>Install Kitty</h1>
+                    <div class="pill">Installs to /Applications</div>
+                  </div>
+                </div>
+                <p>
+                  Kitty is a local music library and metadata editor. This installer copies Kitty.app to your Applications folder.
+                </p>
+              </div>
+            </body>
+          </html>
+          EOF
+
+          cat > dist/pkg/resources/conclusion.html <<'EOF'
+          <!doctype html>
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; margin: 22px; color:#111; }
+                h1 { font-size: 20px; margin: 0 0 10px; }
+                p { font-size: 12px; line-height: 1.55; color:#333; margin:0; }
+              </style>
+            </head>
+            <body>
+              <h1>Kitty installed</h1>
+              <p>You can now launch Kitty from Applications.</p>
+            </body>
+          </html>
+          EOF
+
+          pkgbuild \
+            --root dist/pkg/root \
+            --identifier "com.kitty.app" \
+            --version "${VERSION}" \
+            --install-location "/" \
+            dist/pkg/Kitty-component.pkg
+
+          productbuild --synthesize --package dist/pkg/Kitty-component.pkg dist/pkg/Distribution.xml
+          perl -i -0pe 's|(<installer-gui-script[^>]*>\\n)|$1    <title>Kitty</title>\\n    <background file=\"banner.png\" alignment=\"top\" scaling=\"proportional\"/>\\n    <welcome file=\"welcome.html\"/>\\n    <conclusion file=\"conclusion.html\"/>\\n|s' dist/pkg/Distribution.xml
+
+          productbuild \
+            --distribution dist/pkg/Distribution.xml \
+            --resources dist/pkg/resources \
+            --package-path dist/pkg \
+            Kitty.pkg
+      - name: Verify PKG payload
+        run: |
+          set -euo pipefail
+          test -f Kitty.pkg
+          pkgutil --payload-files Kitty.pkg | grep -qE '^\\./Applications/Kitty\\.app/Contents/MacOS/kitty$'
       - name: Upload artifact (macOS)
         uses: actions/upload-artifact@v4
         with:
           name: Kitty-macos
-          path: Kitty.dmg
+          path: |
+            Kitty.dmg
+            Kitty.pkg
       - name: Publish release assets (macOS)
         if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: Kitty.dmg
+          files: |
+            Kitty.dmg
+            Kitty.pkg
 
   build-windows:
     runs-on: windows-latest
@@ -74,10 +186,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version-file: 'go.mod'
       - uses: actions/setup-node@v4
         with:
           node-version: '18'
+      - name: Install cobalt deps (pnpm)
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.6.0 --activate
+          pnpm install --frozen-lockfile
+        shell: pwsh
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
         shell: pwsh
@@ -93,6 +211,11 @@ jobs:
       - name: Build app (Windows)
         run: wails build -clean -platform windows/amd64
         shell: pwsh
+      - name: Bundle cobalt runtime (Windows resources)
+        run: |
+          chmod +x kitty
+          ./kitty bundle
+        shell: bash
       - name: Build installer (EXE)
         run: |
           # ensure output directories exist for Inno
