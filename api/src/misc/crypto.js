@@ -17,3 +17,4 @@ export function decryptStream(ciphertext, iv, secret) {
 
     return Buffer.concat([ decipher.update(buff), decipher.final() ])
 }
+/// aes logic 
