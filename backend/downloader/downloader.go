@@ -13,6 +13,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +32,7 @@ type Client struct {
 	installed bool
 	http      *http.Client
 	pm        *pkgManager
+	nodePath  string
 
 	updateOnce   sync.Once
 	updateCancel context.CancelFunc
@@ -151,6 +156,10 @@ func (c *Client) Status() Status {
 }
 
 func (c *Client) Start(ctx context.Context) error {
+	if err := c.resolveAPIDir(); err != nil {
+		return err
+	}
+
 	c.mu.Lock()
 	if c.running {
 		c.mu.Unlock()
@@ -162,7 +171,7 @@ func (c *Client) Start(ctx context.Context) error {
 		return err
 	}
 
-	pm, err := c.getPackageManager()
+	nodePath, err := c.getNodePath()
 	if err != nil {
 		return err
 	}
@@ -173,7 +182,7 @@ func (c *Client) Start(ctx context.Context) error {
 		return nil
 	}
 
-	cmd := exec.CommandContext(ctx, pm.cmd, pm.startArgs()...)
+	cmd := exec.CommandContext(ctx, nodePath, "src/cobalt")
 	cmd.Dir = c.apiDir
 	configureCmd(cmd)
 	cmd.Env = append(os.Environ(),
@@ -192,12 +201,17 @@ func (c *Client) Start(ctx context.Context) error {
 	c.cmd = cmd
 	c.running = true
 
-	go streamLogs(stdout, "[cobalt]")
-	go streamLogs(stderr, "[cobalt]")
+	startupLog := &limitedBuffer{limit: 64 * 1024}
+	go streamLogs(io.TeeReader(stdout, startupLog), "[cobalt]")
+	go streamLogs(io.TeeReader(stderr, startupLog), "[cobalt]")
 
+	waitCh := make(chan error, 1)
 	go func() {
 		if err := cmd.Wait(); err != nil {
 			log.Printf("[downloader] cobalt api exited: %v", err)
+			waitCh <- err
+		} else {
+			waitCh <- nil
 		}
 		c.mu.Lock()
 		c.running = false
@@ -205,7 +219,54 @@ func (c *Client) Start(ctx context.Context) error {
 		c.mu.Unlock()
 	}()
 
+	readyCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	if err := c.waitForReady(readyCtx, waitCh); err != nil {
+		c.Stop()
+		out := strings.TrimSpace(startupLog.String())
+		if out != "" {
+			return fmt.Errorf("%w: %s", err, out)
+		}
+		return err
+	}
+
 	return nil
+}
+
+func (c *Client) waitForReady(ctx context.Context, waitCh <-chan error) error {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if c.ping(ctx) == nil {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("cobalt api did not become ready: %w", ctx.Err())
+		case err := <-waitCh:
+			if err != nil {
+				return fmt.Errorf("cobalt api exited during startup: %w", err)
+			}
+			return errors.New("cobalt api exited during startup")
+		case <-ticker.C:
+		}
+	}
+}
+
+func (c *Client) ping(ctx context.Context) error {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/", nil)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		return nil
+	}
+	return fmt.Errorf("unexpected status: %s", resp.Status)
 }
 
 func (c *Client) ensureInstall(ctx context.Context) error {
@@ -216,16 +277,16 @@ func (c *Client) ensureInstall(ctx context.Context) error {
 	}
 	c.mu.Unlock()
 
-	pm, err := c.getPackageManager()
-	if err != nil {
-		return err
-	}
-
 	if _, err := os.Stat(filepath.Join(c.apiDir, "node_modules")); err == nil {
 		c.mu.Lock()
 		c.installed = true
 		c.mu.Unlock()
 		return nil
+	}
+
+	pm, err := c.getPackageManager()
+	if err != nil {
+		return err
 	}
 
 	cmd := exec.CommandContext(ctx, pm.cmd, pm.installArgs()...)
@@ -258,7 +319,7 @@ func (c *Client) getPackageManager() (*pkgManager, error) {
 	}
 
 	for _, opt := range options {
-		if _, err := exec.LookPath(opt.cmd); err == nil {
+		if _, err := c.lookPath(opt.cmd); err == nil {
 			pm := opt
 			c.mu.Lock()
 			c.pm = &pm
@@ -268,6 +329,300 @@ func (c *Client) getPackageManager() (*pkgManager, error) {
 	}
 
 	return nil, errors.New("no package manager found; install pnpm or npm and ensure it is in PATH")
+}
+
+func (c *Client) getNodePath() (string, error) {
+	c.mu.Lock()
+	cached := c.nodePath
+	c.mu.Unlock()
+	if cached != "" && fileExists(cached) {
+		return cached, nil
+	}
+
+	if override := strings.TrimSpace(os.Getenv("KITTY_NODE_PATH")); override != "" {
+		if fileExists(override) {
+			c.mu.Lock()
+			c.nodePath = override
+			c.mu.Unlock()
+			return override, nil
+		}
+		return "", fmt.Errorf("KITTY_NODE_PATH is set but not executable: %s", override)
+	}
+
+	path, err := c.lookPath("node")
+	if err == nil {
+		c.mu.Lock()
+		c.nodePath = path
+		c.mu.Unlock()
+		return path, nil
+	}
+
+	var candidates []string
+	if runtime.GOOS == "windows" {
+		if v := strings.TrimSpace(os.Getenv("ProgramFiles")); v != "" {
+			candidates = append(candidates, filepath.Join(v, "nodejs", "node.exe"))
+		}
+		if v := strings.TrimSpace(os.Getenv("ProgramFiles(x86)")); v != "" {
+			candidates = append(candidates, filepath.Join(v, "nodejs", "node.exe"))
+		}
+		if v := strings.TrimSpace(os.Getenv("LocalAppData")); v != "" {
+			candidates = append(candidates, filepath.Join(v, "Programs", "nodejs", "node.exe"))
+		}
+		candidates = append(candidates,
+			`C:\Program Files\nodejs\node.exe`,
+			`C:\Program Files (x86)\nodejs\node.exe`,
+		)
+	} else {
+		candidates = append(candidates,
+			"/opt/homebrew/bin/node",
+			"/usr/local/bin/node",
+			"/usr/bin/node",
+		)
+		if home, herr := os.UserHomeDir(); herr == nil && home != "" {
+			candidates = append(candidates,
+				filepath.Join(home, ".volta", "bin", "node"),
+			)
+			if nvmNode := newestNVMNode(home); nvmNode != "" {
+				candidates = append(candidates, nvmNode)
+			}
+		}
+	}
+
+	for _, cand := range uniqueStrings(candidates) {
+		if cand == "" {
+			continue
+		}
+		if fileExists(cand) {
+			c.mu.Lock()
+			c.nodePath = cand
+			c.mu.Unlock()
+			return cand, nil
+		}
+	}
+
+	return "", errors.New("node runtime not found; install Node.js 18+ and ensure it is available in PATH (or set KITTY_NODE_PATH)")
+}
+
+func (c *Client) resolveAPIDir() error {
+	c.mu.Lock()
+	current := c.apiDir
+	c.mu.Unlock()
+	if current != "" && looksLikeCobaltAPIDir(current) {
+		return nil
+	}
+
+	var candidates []string
+	if override := strings.TrimSpace(os.Getenv("KITTY_API_DIR")); override != "" {
+		candidates = append(candidates, override)
+	}
+
+	if cwd, err := os.Getwd(); err == nil && cwd != "" {
+		candidates = append(candidates, filepath.Join(cwd, "api"))
+	}
+
+	if exe, err := os.Executable(); err == nil && exe != "" {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "api"),
+			filepath.Join(exeDir, "resources", "app", "api"),
+			filepath.Join(exeDir, "..", "Resources", "app", "api"),
+			filepath.Join(exeDir, "..", "Resources", "api"),
+			filepath.Join(exeDir, "..", "resources", "app", "api"),
+			filepath.Join(exeDir, "..", "api"),
+			filepath.Join(exeDir, "..", "..", "Resources", "app", "api"),
+			filepath.Join(exeDir, "..", "..", "Resources", "api"),
+		)
+	}
+
+	for _, cand := range uniqueStrings(candidates) {
+		if cand == "" {
+			continue
+		}
+		if looksLikeCobaltAPIDir(cand) {
+			c.mu.Lock()
+			c.apiDir = cand
+			c.mu.Unlock()
+			return nil
+		}
+	}
+
+	return errors.New("cobalt api directory not found; the bundled downloader feature cannot start (rebuild to bundle Resources/app/api, or set KITTY_API_DIR)")
+}
+
+func (c *Client) lookPath(file string) (string, error) {
+	if p, err := exec.LookPath(file); err == nil {
+		return p, nil
+	}
+
+	var extra []string
+	if runtime.GOOS == "windows" {
+		if v := strings.TrimSpace(os.Getenv("ProgramFiles")); v != "" {
+			extra = append(extra, filepath.Join(v, "nodejs"))
+		}
+		if v := strings.TrimSpace(os.Getenv("ProgramFiles(x86)")); v != "" {
+			extra = append(extra, filepath.Join(v, "nodejs"))
+		}
+		if v := strings.TrimSpace(os.Getenv("LocalAppData")); v != "" {
+			extra = append(extra, filepath.Join(v, "Programs", "nodejs"))
+		}
+	} else {
+		extra = append(extra, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
+	}
+
+	for _, dir := range uniqueStrings(extra) {
+		if dir == "" {
+			continue
+		}
+		cand := filepath.Join(dir, file)
+		if runtime.GOOS == "windows" {
+			for _, ext := range []string{".exe", ".cmd", ".bat", ""} {
+				if fileExists(cand + ext) {
+					return cand + ext, nil
+				}
+			}
+			continue
+		}
+		if fileExists(cand) {
+			return cand, nil
+		}
+	}
+
+	return "", fmt.Errorf("%s not found in PATH", file)
+}
+
+func looksLikeCobaltAPIDir(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	if !fileExists(filepath.Join(dir, "package.json")) {
+		return false
+	}
+	if !fileExists(filepath.Join(dir, "src", "cobalt.js")) && !fileExists(filepath.Join(dir, "src", "cobalt")) {
+		return false
+	}
+	return true
+}
+
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !st.IsDir()
+}
+
+type limitedBuffer struct {
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	limit int
+}
+
+func (l *limitedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.limit <= 0 {
+		return len(p), nil
+	}
+	remaining := l.limit - l.buf.Len()
+	if remaining <= 0 {
+		return len(p), nil
+	}
+	if len(p) > remaining {
+		_, _ = l.buf.Write(p[:remaining])
+		return len(p), nil
+	}
+	_, _ = l.buf.Write(p)
+	return len(p), nil
+}
+
+func (l *limitedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+func uniqueStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = filepath.Clean(s)
+		if s == "." || s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+type semver struct {
+	major int
+	minor int
+	patch int
+	raw   string
+}
+
+func newestNVMNode(home string) string {
+	base := filepath.Join(home, ".nvm", "versions", "node")
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return ""
+	}
+
+	var vers []semver
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(e.Name())
+		if !strings.HasPrefix(name, "v") {
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(name, "v"), ".")
+		if len(parts) < 2 {
+			continue
+		}
+		maj, err1 := strconv.Atoi(parts[0])
+		min, err2 := strconv.Atoi(parts[1])
+		patch := 0
+		var err3 error
+		if len(parts) >= 3 {
+			patch, err3 = strconv.Atoi(parts[2])
+		}
+		if err1 != nil || err2 != nil || err3 != nil {
+			continue
+		}
+		vers = append(vers, semver{major: maj, minor: min, patch: patch, raw: name})
+	}
+
+	if len(vers) == 0 {
+		return ""
+	}
+
+	sort.Slice(vers, func(i, j int) bool {
+		if vers[i].major != vers[j].major {
+			return vers[i].major > vers[j].major
+		}
+		if vers[i].minor != vers[j].minor {
+			return vers[i].minor > vers[j].minor
+		}
+		if vers[i].patch != vers[j].patch {
+			return vers[i].patch > vers[j].patch
+		}
+		return vers[i].raw > vers[j].raw
+	})
+
+	node := filepath.Join(base, vers[0].raw, "bin", "node")
+	if fileExists(node) {
+		return node
+	}
+	return ""
 }
 
 func streamLogs(r io.Reader, prefix string) {
@@ -323,6 +678,18 @@ func (c *Client) RequestDownload(ctx context.Context, link string, format string
 	defer res.Body.Close()
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		const maxErrBody = 16 * 1024
+		raw, _ := io.ReadAll(io.LimitReader(res.Body, maxErrBody))
+		var parsed apiResponse
+		if err := json.Unmarshal(raw, &parsed); err == nil && parsed.Error.Code != "" {
+			if parsed.Error.Context != nil {
+				return nil, fmt.Errorf("api error (%s): %s (context: %v)", res.Status, parsed.Error.Code, parsed.Error.Context)
+			}
+			return nil, fmt.Errorf("api error (%s): %s", res.Status, parsed.Error.Code)
+		}
+		if s := strings.TrimSpace(string(raw)); s != "" {
+			return nil, fmt.Errorf("api responded with %s: %s", res.Status, s)
+		}
 		return nil, fmt.Errorf("api responded with %s", res.Status)
 	}
 
