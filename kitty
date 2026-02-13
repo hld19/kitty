@@ -36,7 +36,10 @@ run_install() {
 bundle_cobalt_runtime() {
   local targets=()
 
-  if [[ -d "$ROOT/build/bin/resources/app/api" ]]; then
+  if [[ -d "$ROOT/build/bin" ]]; then
+    mkdir -p "$ROOT/build/bin/resources/app"
+    rm -rf "$ROOT/build/bin/resources/app/api"
+    cp -R "$ROOT/api" "$ROOT/build/bin/resources/app/api"
     targets+=("$ROOT/build/bin/resources/app")
   fi
 
