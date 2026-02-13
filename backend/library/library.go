@@ -117,9 +117,20 @@ func (m *Manager) loadAndMerge(paths []string, persist bool) (*BatchResult, erro
 		newTracks = append(newTracks, r.track)
 	}
 
-	if len(newTracks) > 0 {
+	loadedByPath := make(map[string]metadata.TrackMetadata, len(newTracks))
+	for _, t := range newTracks {
+		loadedByPath[t.FilePath] = t
+	}
+	orderedNewTracks := make([]metadata.TrackMetadata, 0, len(newTracks))
+	for _, p := range unique {
+		if t, ok := loadedByPath[p]; ok {
+			orderedNewTracks = append(orderedNewTracks, t)
+		}
+	}
+
+	if len(orderedNewTracks) > 0 {
 		m.mu.Lock()
-		for _, t := range newTracks {
+		for _, t := range orderedNewTracks {
 			if _, exists := m.tracks[t.FilePath]; !exists {
 				m.order = append(m.order, t.FilePath)
 			}
@@ -134,7 +145,7 @@ func (m *Manager) loadAndMerge(paths []string, persist bool) (*BatchResult, erro
 			}
 		}
 
-		log.Printf("[library] added %d tracks (errors: %d); total=%d", len(newTracks), len(errs), len(snapshot))
+		log.Printf("[library] added %d tracks (errors: %d); total=%d", len(orderedNewTracks), len(errs), len(snapshot))
 	}
 
 	return &BatchResult{
