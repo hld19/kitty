@@ -34,7 +34,6 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// best-effort start of the bundled downloader API
 	go func() {
 		if err := a.downloader.Start(ctx); err != nil {
 			log.Printf("[app] downloader auto-start failed: %v", err)
@@ -133,6 +132,21 @@ func (a *App) StopDownloader() {
 	a.downloader.Stop()
 }
 
+func (a *App) ResetAppData() error {
+	a.downloader.Stop()
+	a.player.Pause()
+
+	if err := storage.ClearLibrary(); err != nil {
+		return err
+	}
+	if err := metadata.ClearSidecarCache(); err != nil {
+		return err
+	}
+
+	a.library = library.NewManager()
+	return nil
+}
+
 func (a *App) ChooseDownloadFolder() (string, error) {
 	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Select download folder",
@@ -198,7 +212,6 @@ func (a *App) DownloadMedia(link string, targetDir string, format string, bitrat
 	}, nil
 }
 
-// applyMetaHints maps loose metadata hints into our TrackMetadata shape and updates the library cache.
 func applyMetaHints(lib *library.Manager, path string, hints map[string]interface{}) *metadata.TrackMetadata {
 	build := metadata.TrackMetadata{FilePath: path, FileName: filepath.Base(path)}
 
@@ -251,7 +264,6 @@ func applyMetaHints(lib *library.Manager, path string, hints map[string]interfac
 			}
 		}
 	}
-	// some services use date as a string
 	setString("date", &build.Comment)
 
 	if build.Title == "" && build.FileName != "" {
@@ -308,7 +320,6 @@ func extensionFromMime(mimeType string) string {
 	return ""
 }
 
-// mergeAndPersistMetadata enriches the library entry with on-disk tags, API hints, and cover art if available.
 func mergeAndPersistMetadata(
 	path string,
 	info *downloader.DownloadInfo,
@@ -358,7 +369,6 @@ func mergeAndPersistMetadata(
 		}
 	}
 
-	// Apply requested format/bitrate hints if still missing.
 	if info != nil {
 		br := parseBitrate(info.RequestedBitrate)
 		if br > 0 {
