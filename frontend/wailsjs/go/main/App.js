@@ -46,6 +46,10 @@ export function PlayAudio() {
   return window['go']['main']['App']['PlayAudio']();
 }
 
+export function ResetAppData() {
+  return window['go']['main']['App']['ResetAppData']();
+}
+
 export function SaveLibrary(arg1) {
   return window['go']['main']['App']['SaveLibrary'](arg1);
 }

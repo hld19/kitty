@@ -1,5 +1,5 @@
 import React from 'react';
-import { Library, Tag, Mic2, Image, PlusCircle, AudioLines, DownloadCloud } from 'lucide-react';
+import { Library, Tag, Mic2, Image, PlusCircle, AudioLines, DownloadCloud, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 
 interface DockProps {
@@ -10,12 +10,13 @@ interface DockProps {
 
 export const Dock: React.FC<DockProps> = ({ activeTab, setActiveTab, onAddFiles }) => {
     const tabs = [
-        { id: 'library', icon: Library, label: 'Artists' },
-        { id: 'songs', icon: AudioLines, label: 'Songs' },
         { id: 'downloader', icon: DownloadCloud, label: 'Downloader' },
+        { id: 'library', icon: Library, label: 'Library' },
+        { id: 'songs', icon: AudioLines, label: 'Songs' },
         { id: 'editor', icon: Tag, label: 'Metadata' },
         { id: 'covers', icon: Image, label: 'Artwork' },
         { id: 'lyrics', icon: Mic2, label: 'Lyrics' },
+        { id: 'settings', icon: Trash2, label: 'Data' },
     ];
 
     return (

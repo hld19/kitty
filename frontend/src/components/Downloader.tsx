@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { DownloadMedia, StartDownloader, StopDownloader, DownloaderStatus, ChooseDownloadFolder } from '../../wailsjs/go/main/App';
+import { DownloadMedia, StartDownloader, ChooseDownloadFolder } from '../../wailsjs/go/main/App';
 import { useMetadata } from '../hooks/useMetadata';
 import { AlertTriangle, DownloadCloud, PlugZap, FolderOpen, CheckCircle2 } from 'lucide-react';
 
@@ -19,28 +19,24 @@ export const Downloader: React.FC<DownloaderProps> = ({ metadataHook }) => {
     const [consent, setConsent] = useState<boolean>(() => {
         return localStorage.getItem(CONSENT_KEY) === '1';
     });
-    const [isRunning, setIsRunning] = useState(false);
     const [downloadDir, setDownloadDir] = useState<string>(() => localStorage.getItem(DIR_KEY) || '');
     const [audioFormat, setAudioFormat] = useState('mp3');
     const [audioBitrate, setAudioBitrate] = useState('320');
 
     useEffect(() => {
         if (!consent) return;
-        refreshStatus();
-        const interval = setInterval(() => {
-            refreshStatus();
-        }, 5000);
-        return () => clearInterval(interval);
+        let cancelled = false;
+        (async () => {
+            try {
+                await StartDownloader();
+            } catch (err: any) {
+                if (!cancelled) {
+                    setError(err?.toString?.() ?? 'Failed to start downloader');
+                }
+            }
+        })();
+        return () => { cancelled = true; };
     }, [consent]);
-
-    const refreshStatus = async () => {
-        try {
-            const st = await DownloaderStatus();
-            setIsRunning(Boolean((st as any)?.running));
-        } catch {
-            setIsRunning(false);
-        }
-    };
 
     const pickDirectory = async () => {
         try {
@@ -51,23 +47,6 @@ export const Downloader: React.FC<DownloaderProps> = ({ metadataHook }) => {
             }
         } catch (err: any) {
             setError(err?.toString?.() ?? 'Failed to choose folder');
-        }
-    };
-
-    const handleToggleApi = async () => {
-        setError(null);
-        setIsStarting(true);
-        try {
-            if (isRunning) {
-                await StopDownloader();
-            } else {
-                await StartDownloader();
-            }
-            await refreshStatus();
-        } catch (err: any) {
-            setError(err?.toString?.() ?? 'Failed to toggle downloader');
-        } finally {
-            setIsStarting(false);
         }
     };
 
@@ -108,7 +87,6 @@ export const Downloader: React.FC<DownloaderProps> = ({ metadataHook }) => {
             await StartDownloader();
             setConsent(true);
             localStorage.setItem(CONSENT_KEY, '1');
-            await refreshStatus();
         } catch (err: any) {
             setError(err?.toString?.() ?? 'Failed to start downloader');
         } finally {
@@ -127,7 +105,10 @@ export const Downloader: React.FC<DownloaderProps> = ({ metadataHook }) => {
                             <p className="text-sm text-neutral-400">To use this feature, Kitty will self-host the bundled cobalt API in the background.</p>
                         </div>
                     </div>
-                    <p className="text-xs text-neutral-500">Kitty will run <code>pnpm install</code> and <code>pnpm start</code> in the <code>/api</code> directory, bound to <code>http://127.0.0.1:8787</code>. Continue?</p>
+                    <p className="text-xs text-neutral-500">
+                        Kitty will start the bundled cobalt API in the background, bound to <code>http://127.0.0.1:8787</code>.
+                        If dependencies are missing, it may run a one-time install using pnpm or npm. Continue?
+                    </p>
                     <div className="flex gap-3">
                         <button
                             onClick={handleConsent}
@@ -152,24 +133,12 @@ export const Downloader: React.FC<DownloaderProps> = ({ metadataHook }) => {
 
     return (
         <div className="h-full w-full overflow-hidden bg-neutral-950/95 flex flex-col min-h-0 relative">
-            <div className="px-8 pt-6 pb-3 sticky top-0 z-10 bg-neutral-950/85 backdrop-blur-lg flex items-center justify-between">
+            <div className="px-8 pt-6 pb-3 sticky top-0 z-10 bg-neutral-950/85 backdrop-blur-lg flex items-center">
                 <div className="flex flex-col gap-1">
                     <p className="text-xs uppercase tracking-[0.24em] text-neutral-500">Downloader</p>
                     <h1 className="text-2xl font-semibold text-white leading-tight flex items-center gap-2">
                     <span className="text-amber-300 text-lg">@_@</span>
                     </h1>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className={`text-xs px-3 py-1 rounded-full border ${isRunning ? 'border-white/20 text-neutral-200' : 'border-white/10 text-neutral-400'}`}>
-                        {isRunning ? 'API Running' : 'API Stopped'}
-                    </span>
-                    <button
-                        onClick={handleToggleApi}
-                        disabled={isStarting}
-                        className="pro-button-secondary text-xs"
-                    >
-                        {isRunning ? (isStarting ? 'Stopping…' : 'Stop API') : (isStarting ? 'Starting…' : 'Start API')}
-                    </button>
                 </div>
             </div>
 

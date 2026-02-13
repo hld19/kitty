@@ -4,12 +4,13 @@ import { Disc, Search } from 'lucide-react';
 
 interface SongLibraryProps {
     files: metadata.TrackMetadata[];
+    selectedFilePath?: string | null;
     onEditTrack: (track: metadata.TrackMetadata) => void;
 }
 
-export const SongLibrary: React.FC<SongLibraryProps> = ({ files, onEditTrack }) => {
+export const SongLibrary: React.FC<SongLibraryProps> = ({ files, selectedFilePath, onEditTrack }) => {
     const [query, setQuery] = useState('');
-    const [sortBy, setSortBy] = useState<'title' | 'artist' | 'album'>('title');
+    const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'title' | 'artist' | 'album'>('title');
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -21,7 +22,16 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ files, onEditTrack }) 
                 (t.album || '').toLowerCase().includes(q)
             );
         });
+
+        const orderIndex = new Map<string, number>();
+        files.forEach((t, i) => orderIndex.set(t.filePath, i));
+
         return next.sort((a, b) => {
+            if (sortBy === 'recent' || sortBy === 'oldest') {
+                const ia = orderIndex.get(a.filePath) ?? 0;
+                const ib = orderIndex.get(b.filePath) ?? 0;
+                return sortBy === 'recent' ? ib - ia : ia - ib;
+            }
             const get = (t: metadata.TrackMetadata) => {
                 if (sortBy === 'title') return t.title || t.fileName;
                 if (sortBy === 'artist') return t.artist || 'Unknown Artist';
@@ -55,6 +65,8 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ files, onEditTrack }) 
                             onChange={e => setSortBy(e.target.value as any)}
                             className="bg-transparent text-neutral-200 text-[12px] px-2 py-0.5 rounded-full focus:outline-none"
                         >
+                            <option value="recent">Recently added</option>
+                            <option value="oldest">Oldest added</option>
                             <option value="title">Title</option>
                             <option value="artist">Artist</option>
                             <option value="album">Album</option>
@@ -70,11 +82,16 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ files, onEditTrack }) 
                     </div>
                 ) : (
                     <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                        {filtered.map(track => (
+                        {filtered.map(track => {
+                            const isSelected = !!selectedFilePath && track.filePath === selectedFilePath;
+                            return (
                             <button
                                 key={track.filePath}
                                 onClick={() => onEditTrack(track)}
-                                className="p-4 rounded-xl border bg-neutral-900/50 border-white/5 hover:border-white/15 hover:bg-neutral-900/70 transition-all text-left flex gap-3 items-center group"
+                                className={[
+                                    'p-4 rounded-xl border bg-neutral-900/50 hover:bg-neutral-900/70 transition-all text-left flex gap-3 items-center group',
+                                    isSelected ? 'border-2 border-white/70' : 'border-white/5 hover:border-white/15',
+                                ].join(' ')}
                             >
                                 <div className="w-16 h-16 shrink-0 bg-neutral-950 rounded-lg overflow-hidden relative border border-white/5">
                                     {track.coverImage ? (
@@ -93,7 +110,7 @@ export const SongLibrary: React.FC<SongLibraryProps> = ({ files, onEditTrack }) 
                                     <p className="text-[11px] text-neutral-600 truncate">{track.fileName}</p>
                                 </div>
                             </button>
-                        ))}
+                        )})}
                     </div>
                 )}
             </div>
