@@ -21,12 +21,22 @@
         <string>10.13.0</string>
         <key>NSHighResolutionCapable</key>
         <string>true</string>
-        <key>NSHumanReadableCopyright</key>
-        <string>{{.Info.Copyright}}</string>
-        {{if .Info.FileAssociations}}
-        <key>CFBundleDocumentTypes</key>
-        <array>
-          {{range .Info.FileAssociations}}
+	        <key>NSHumanReadableCopyright</key>
+	        <string>{{.Info.Copyright}}</string>
+	        <key>NSDesktopFolderUsageDescription</key>
+	        <string>Kitty needs access to your Desktop folder to read and edit music files you add to your library.</string>
+	        <key>NSDocumentsFolderUsageDescription</key>
+	        <string>Kitty needs access to your Documents folder to read and edit music files you add to your library.</string>
+	        <key>NSDownloadsFolderUsageDescription</key>
+	        <string>Kitty needs access to your Downloads folder to read and edit music files you add to your library.</string>
+	        <key>NSNetworkVolumesUsageDescription</key>
+	        <string>Kitty needs access to network volumes to read and edit music files you add to your library.</string>
+	        <key>NSRemovableVolumesUsageDescription</key>
+	        <string>Kitty needs access to removable volumes to read and edit music files you add to your library.</string>
+	        {{if .Info.FileAssociations}}
+	        <key>CFBundleDocumentTypes</key>
+	        <array>
+	          {{range .Info.FileAssociations}}
           <dict>
             <key>CFBundleTypeExtensions</key>
             <array>
