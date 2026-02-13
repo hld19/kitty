@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"kitty/backend/analysis"
@@ -235,15 +236,64 @@ func trimExt(name string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name))
 }
 
-func readSidecar(path string) (*TrackMetadata, error) {
-	sidePath := sidecarPath(path)
-	data, err := os.ReadFile(sidePath)
+func sidecarDir() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil || strings.TrimSpace(configDir) == "" {
+		return "", fmt.Errorf("user config dir unavailable")
+	}
+	return filepath.Join(configDir, "Kitty", "sidecars"), nil
+}
+
+func legacySidecarPath(path string) string {
+	return path + ".kittymeta.json"
+}
+
+func sidecarKey(path string) string {
+	clean := filepath.Clean(path)
+	if abs, err := filepath.Abs(clean); err == nil && strings.TrimSpace(abs) != "" {
+		clean = abs
+	}
+	if runtime.GOOS == "windows" {
+		clean = strings.ToLower(clean)
+	}
+	return clean
+}
+
+func sidecarPath(path string) string {
+	dir, err := sidecarDir()
 	if err != nil {
-		return nil, err
+		return legacySidecarPath(path)
+	}
+	sum := sha1.Sum([]byte(sidecarKey(path)))
+	name := hex.EncodeToString(sum[:]) + ".kittymeta.json"
+	return filepath.Join(dir, name)
+}
+
+func readSidecar(path string) (*TrackMetadata, error) {
+	primary := sidecarPath(path)
+	data, err := os.ReadFile(primary)
+	if err != nil {
+		legacy := legacySidecarPath(path)
+		if legacy == primary {
+			return nil, err
+		}
+		alt, altErr := os.ReadFile(legacy)
+		if altErr != nil {
+			return nil, err
+		}
+		data = alt
 	}
 	var md TrackMetadata
 	if err := json.Unmarshal(data, &md); err != nil {
 		return nil, err
+	}
+	md.FilePath = path
+	md.FileName = filepath.Base(path)
+
+	if legacy := legacySidecarPath(path); legacy != primary {
+		if _, statErr := os.Stat(primary); os.IsNotExist(statErr) {
+			_ = writeSidecar(md)
+		}
 	}
 	return &md, nil
 }
@@ -253,11 +303,28 @@ func writeSidecar(md TrackMetadata) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(sidecarPath(md.FilePath), data, 0o644)
+	path := sidecarPath(md.FilePath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return err
+	}
+
+	legacy := legacySidecarPath(md.FilePath)
+	if legacy != path {
+		if err := os.Remove(legacy); err != nil && !os.IsNotExist(err) {
+		}
+	}
+	return nil
 }
 
-func sidecarPath(path string) string {
-	return path + ".kittymeta.json"
+func ClearSidecarCache() error {
+	dir, err := sidecarDir()
+	if err != nil {
+		return nil
+	}
+	return os.RemoveAll(dir)
 }
 
 func mergeMetadata(base *TrackMetadata, override *TrackMetadata) *TrackMetadata {
