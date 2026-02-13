@@ -24,7 +24,6 @@ ensure_wails() {
     exit 1
   fi
 
-  # Make sure the freshly installed binary is on PATH for this script.
   BIN_DIR="${GOBIN:-$(go env GOPATH)/bin}"
   export PATH="$BIN_DIR:$PATH"
 }
@@ -34,9 +33,48 @@ run_install() {
   go mod download
 }
 
+bundle_cobalt_runtime() {
+  local targets=()
+
+  if [[ -d "$ROOT/build/bin/resources/app/api" ]]; then
+    targets+=("$ROOT/build/bin/resources/app")
+  fi
+
+  if [[ -d "$ROOT/build/bin/Kitty.app/Contents/Resources" ]]; then
+    mkdir -p "$ROOT/build/bin/Kitty.app/Contents/Resources/app"
+    rm -rf "$ROOT/build/bin/Kitty.app/Contents/Resources/app/api"
+    cp -R "$ROOT/api" "$ROOT/build/bin/Kitty.app/Contents/Resources/app/api"
+    targets+=("$ROOT/build/bin/Kitty.app/Contents/Resources/app")
+  fi
+
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  if [[ ! -d "$ROOT/node_modules/.pnpm" ]]; then
+    echo "[kitty] cobalt runtime bundling skipped: $ROOT/node_modules/.pnpm not found (run pnpm install at repo root)" >&2
+    return
+  fi
+
+  if [[ ! -d "$ROOT/packages" ]]; then
+    echo "[kitty] cobalt runtime bundling skipped: $ROOT/packages not found" >&2
+    return
+  fi
+
+  for t in "${targets[@]}"; do
+    echo "[kitty] bundling cobalt runtime deps into $t ..."
+    rm -rf "$t/node_modules" "$t/packages"
+    cp -R "$ROOT/node_modules" "$t/node_modules"
+    cp -R "$ROOT/packages" "$t/packages"
+  done
+}
+
 case "$CMD" in
   install)
     run_install
+    ;;
+  bundle)
+    bundle_cobalt_runtime
     ;;
   dev)
     ensure_wails
@@ -47,6 +85,7 @@ case "$CMD" in
     ensure_wails
     run_install
     wails build
+    bundle_cobalt_runtime
     if command -v xattr >/dev/null 2>&1; then
       xattr -dr com.apple.quarantine "$ROOT/build/bin/Kitty.app" 2>/dev/null || true
     fi
@@ -62,6 +101,7 @@ Usage:
   ./kitty install   Install frontend + Go deps
   ./kitty dev       Run Wails dev server with hot reload
   ./kitty build     Create a production build
+  ./kitty bundle    Bundle the cobalt downloader runtime into an existing build output
   ./kitty clean     Remove build artifacts
 USAGE
     ;;
