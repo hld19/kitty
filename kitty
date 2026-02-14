@@ -28,6 +28,18 @@ ensure_wails() {
   export PATH="$BIN_DIR:$PATH"
 }
 
+ensure_build_output_writable() {
+  if [[ -d "$ROOT/build/bin/Kitty.app" ]] && [[ ! -w "$ROOT/build/bin/Kitty.app" ]]; then
+    echo "[kitty] build output is not writable: $ROOT/build/bin/Kitty.app" >&2
+    echo "[kitty] This usually happens if you previously built or packaged with sudo." >&2
+    echo "[kitty] Fix with:" >&2
+    echo "  sudo chown -R \"$(id -un)\":\"$(id -gn)\" \"$ROOT/build/bin/Kitty.app\"" >&2
+    echo "[kitty] Or delete it:" >&2
+    echo "  sudo rm -rf \"$ROOT/build/bin/Kitty.app\"" >&2
+    exit 1
+  fi
+}
+
 run_install() {
   npm install --prefix "$ROOT/frontend"
   go mod download
@@ -35,6 +47,8 @@ run_install() {
 
 bundle_cobalt_runtime() {
   local targets=()
+
+  ensure_build_output_writable
 
   if [[ -d "$ROOT/build/bin" ]]; then
     mkdir -p "$ROOT/build/bin/resources/app"
@@ -82,11 +96,13 @@ case "$CMD" in
   dev)
     ensure_wails
     run_install
+    ensure_build_output_writable
     wails dev
     ;;
   build)
     ensure_wails
     run_install
+    ensure_build_output_writable
     wails build
     bundle_cobalt_runtime
     if command -v xattr >/dev/null 2>&1; then
@@ -94,6 +110,7 @@ case "$CMD" in
     fi
     ;;
   clean)
+    ensure_build_output_writable
     rm -rf "$ROOT/frontend/dist" "$ROOT/build/bin" "$ROOT/dist"
     ;;
   help|*)
