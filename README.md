@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-Desktop music metadata manager with a floating dock, artwork tools, and fast library caching.
+Cross-platform desktop music library and metadata manager with a floating dock, fast caching, tag/artwork/lyrics tools, and a built-in downloader (Cobalt + SoundCloud likes).
 </p>
 
 ## Features
@@ -14,18 +14,27 @@ Desktop music metadata manager with a floating dock, artwork tools, and fast lib
 - Artwork editor: crop/zoom, brightness, saturation, blur, sharpen
 - Lyrics editor and audio preview
 - Cached library for quick startup
-- Built-in api provided by [cobalt](https://github.com/imputnet/cobalt) (MP3/OGG/WAV/OPUS, selectable bitrate)
+- Direct downloader powered by [cobalt](https://github.com/imputnet/cobalt) (MP3/OGG/WAV/OPUS, selectable bitrate)
+- SoundCloud likes view with one-click downloads (auto-imports into Kitty)
 
 ## Tech Stack
 - Backend: Go + Wails
 - Frontend: React, TypeScript, Vite, TailwindCSS
-- Audio/Metadata: beep/mp3, id3v2, howden/tag
-- (application has alot of ts/tsx but the main focus off the application is golang) (will maybe rewrite some ts/tsx stuff to go in the future)
+- Audio/Metadata: beep/mp3, id3v2, dhowden/tag
+- Core logic is Go; UI is mostly TS/TSX.
 
 ## Requirements
 - [Go 1.21+](https://go.dev/doc/install)
 - [Node.js 18+](https://nodejs.org/en/download) with pnpm or npm available on PATH (for the bundled cobalt API)
 - Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
+
+## SoundCloud Setup
+SoundCloud requires your own app credentials.
+
+1. Create a SoundCloud app and set the redirect URI to:
+   - `http://127.0.0.1:17877/oauth/soundcloud/callback`
+2. In Kitty: open `Settings` and paste your SoundCloud `Client ID` and `Client Secret`.
+3. Go to `Downloader` → `SoundCloud Likes` and press `Connect`.
 
 ## Build from source (recommended)
 - `./kitty install` – install Go and frontend dependencies
@@ -40,6 +49,7 @@ Desktop music metadata manager with a floating dock, artwork tools, and fast lib
 ## Project Structure
 - `frontend/` — UI components, hooks, Tailwind styles
 - `backend/` — audio, metadata, storage, analysis
+- `api/` — bundled cobalt API source
 - `app.go` / `main.go` — Wails bootstrap and bindings
 
 ## License
