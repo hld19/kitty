@@ -6,6 +6,7 @@ import (
 	"kitty/backend/downloader"
 	"kitty/backend/library"
 	"kitty/backend/metadata"
+	"kitty/backend/soundcloud"
 	"kitty/backend/storage"
 	"log"
 	"net/url"
@@ -21,6 +22,7 @@ type App struct {
 	player     *audio.AudioPlayer
 	library    *library.Manager
 	downloader *downloader.Client
+	sc         *soundcloud.Service
 }
 
 func NewApp() *App {
@@ -29,6 +31,7 @@ func NewApp() *App {
 		player:     audio.NewAudioPlayer(),
 		library:    library.NewManager(),
 		downloader: downloader.New(filepath.Join(root, "api")),
+		sc:         soundcloud.New("http://127.0.0.1:17877/oauth/soundcloud/callback", "127.0.0.1:17877"),
 	}
 }
 
@@ -139,6 +142,9 @@ func (a *App) ResetAppData() error {
 	if err := storage.ClearLibrary(); err != nil {
 		return err
 	}
+	if err := storage.ClearSettings(); err != nil {
+		return err
+	}
 	if err := metadata.ClearSidecarCache(); err != nil {
 		return err
 	}
@@ -210,6 +216,35 @@ func (a *App) DownloadMedia(link string, targetDir string, format string, bitrat
 		Format:    info.RequestedFormat,
 		Bitrate:   info.RequestedBitrate,
 	}, nil
+}
+
+func (a *App) SoundCloudStatus() (soundcloud.AuthStatus, error) {
+	return a.sc.Status()
+}
+
+func (a *App) SoundCloudSetCredentials(clientID string, clientSecret string) error {
+	return a.sc.SetCredentials(clientID, clientSecret)
+}
+
+func (a *App) SoundCloudValidateCredentials() error {
+	return a.sc.ValidateCredentials(a.ctx)
+}
+
+func (a *App) SoundCloudBeginAuth() (string, error) {
+	authURL, err := a.sc.StartAuth(a.ctx)
+	if err != nil {
+		return "", err
+	}
+	runtime.BrowserOpenURL(a.ctx, authURL)
+	return authURL, nil
+}
+
+func (a *App) SoundCloudLogout() error {
+	return a.sc.Logout()
+}
+
+func (a *App) SoundCloudListLikes(nextHref string) (*soundcloud.LikesPage, error) {
+	return a.sc.ListLikes(a.ctx, nextHref)
 }
 
 func applyMetaHints(lib *library.Manager, path string, hints map[string]interface{}) *metadata.TrackMetadata {
