@@ -81,14 +81,14 @@ function App() {
                                     files={fileList} 
                                     images={artistImagesHook.images} 
                                     setArtistImage={artistImagesHook.setArtistImage} 
-                                    onEditTrack={(track) => { selectTrack(track); }} 
+                                    onEditTrack={(track) => { selectTrack(track); setActiveTab('editor'); }} 
                                 />
                             )}
                             {activeTab === 'songs' && (
                                 <SongLibrary
                                     files={fileList}
                                     selectedFilePath={currentTrack?.filePath ?? null}
-                                    onEditTrack={(track) => { selectTrack(track); }}
+                                    onEditTrack={(track) => { selectTrack(track); setActiveTab('editor'); }}
                                 />
                             )}
                             {activeTab === 'editor' && (
@@ -101,7 +101,7 @@ function App() {
                                  <LyricsEditor metadataHook={metadataHook} />
                             )}
                             {activeTab === 'downloader' && (
-                                <Downloader metadataHook={metadataHook} />
+                                <Downloader metadataHook={metadataHook} openSettings={() => setActiveTab('settings')} />
                             )}
                             {activeTab === 'settings' && (
                                 <Settings metadataHook={metadataHook} />
