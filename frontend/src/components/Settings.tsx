@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Trash2, AlertTriangle } from 'lucide-react';
-import { ResetAppData } from '../../wailsjs/go/main/App';
+import { ResetAppData, SoundCloudLogout, SoundCloudSetCredentials, SoundCloudStatus, SoundCloudValidateCredentials } from '../../wailsjs/go/main/App';
 import { useMetadata } from '../hooks/useMetadata';
 
 interface SettingsProps {
@@ -21,8 +21,109 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
     const [confirmText, setConfirmText] = useState('');
     const [isResetting, setIsResetting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [scClientId, setScClientId] = useState('');
+    const [scClientSecret, setScClientSecret] = useState('');
+    const [scBusy, setScBusy] = useState(false);
+    const [scInfo, setScInfo] = useState<string | null>(null);
+    const [scError, setScError] = useState<string | null>(null);
+    const [scStatus, setScStatus] = useState<{ configured: boolean; connected: boolean; username: string }>({
+        configured: false,
+        connected: false,
+        username: '',
+    });
 
     const canConfirm = useMemo(() => confirmText.trim().toUpperCase() === 'RESET', [confirmText]);
+
+    const refreshSoundCloud = async (silent = false) => {
+        try {
+            const s = await SoundCloudStatus();
+            const cid = String((s as any)?.clientId ?? '').trim();
+            setScStatus({
+                configured: !!(s as any)?.configured,
+                connected: !!(s as any)?.connected,
+                username: (s as any)?.username || '',
+            });
+            setScClientId(prev => (prev.trim() === '' && cid ? cid : prev));
+        } catch (e: any) {
+            if (!silent) setScError(e?.toString?.() ?? 'Failed to load SoundCloud status');
+        }
+    };
+
+    React.useEffect(() => {
+        void refreshSoundCloud(true);
+    }, []);
+
+    const saveSoundCloud = async () => {
+        setScError(null);
+        setScInfo(null);
+        if (!scClientId.trim() || !scClientSecret.trim()) {
+            setScError('Enter both client id and client secret.');
+            return;
+        }
+        setScBusy(true);
+        try {
+            if (scStatus.connected) {
+                await SoundCloudLogout();
+            }
+            await SoundCloudSetCredentials(scClientId.trim(), scClientSecret.trim());
+            setScClientSecret('');
+            setScInfo(scStatus.connected ? 'Updated. You were disconnected; reconnect from Downloader → SoundCloud Likes.' : 'Saved. You can now connect from Downloader → SoundCloud Likes.');
+            await refreshSoundCloud(true);
+        } catch (e: any) {
+            setScError(e?.toString?.() ?? 'Failed to save credentials');
+        } finally {
+            setScBusy(false);
+        }
+    };
+
+    const validateSoundCloud = async () => {
+        setScError(null);
+        setScInfo(null);
+        setScBusy(true);
+        try {
+            await SoundCloudValidateCredentials();
+            setScInfo('Credentials look valid.');
+        } catch (e: any) {
+            setScError(e?.toString?.() ?? 'Credential check failed');
+        } finally {
+            setScBusy(false);
+        }
+    };
+
+    const clearSoundCloud = async () => {
+        setScError(null);
+        setScInfo(null);
+        setScBusy(true);
+        try {
+            if (scStatus.connected) {
+                await SoundCloudLogout();
+            }
+            await SoundCloudSetCredentials('', '');
+            setScClientId('');
+            setScClientSecret('');
+            setScInfo('Cleared.');
+            await refreshSoundCloud(true);
+        } catch (e: any) {
+            setScError(e?.toString?.() ?? 'Failed to clear credentials');
+        } finally {
+            setScBusy(false);
+        }
+    };
+
+    const disconnectSoundCloud = async () => {
+        setScError(null);
+        setScInfo(null);
+        setScBusy(true);
+        try {
+            await SoundCloudLogout();
+            setScInfo('Disconnected.');
+            await refreshSoundCloud(true);
+        } catch (e: any) {
+            setScError(e?.toString?.() ?? 'Failed to disconnect');
+        } finally {
+            setScBusy(false);
+        }
+    };
 
     const reset = async () => {
         setError(null);
@@ -48,17 +149,86 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
             <div className="max-w-3xl mx-auto space-y-6">
                 <div className="space-y-1">
                     <p className="text-xs uppercase tracking-[0.24em] text-neutral-500">Settings</p>
-                    <h1 className="text-2xl font-semibold text-white">App Data</h1>
+                    <h1 className="text-2xl font-semibold text-white">Settings</h1>
+                </div>
+
+                <div className="bg-neutral-900/40 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">SoundCloud</p>
+                            <p className="text-sm text-white font-medium">API credentials</p>
+                            {scStatus.connected && scStatus.username && (
+                                <p className="text-xs text-neutral-400">Connected as {scStatus.username}</p>
+                            )}
+                            {!scStatus.connected && scStatus.configured && (
+                                <p className="text-xs text-neutral-400">Configured. Connect from Downloader → SoundCloud Likes.</p>
+                            )}
+                        </div>
+
+                        {scStatus.connected && (
+                            <button onClick={disconnectSoundCloud} disabled={scBusy} className="pro-button-secondary text-xs px-3 py-2">
+                                Disconnect
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="text-xs text-neutral-500">
+                        Redirect URI:
+                        <span className="font-mono text-neutral-300 ml-2">http://127.0.0.1:17877/oauth/soundcloud/callback</span>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="pro-label">Client ID</label>
+                            <input
+                                className="pro-input"
+                                value={scClientId}
+                                onChange={e => setScClientId(e.target.value)}
+                                spellCheck={false}
+                                disabled={scBusy}
+                            />
+                        </div>
+                        <div>
+                            <label className="pro-label">Client Secret</label>
+                            <input
+                                className="pro-input"
+                                type="password"
+                                value={scClientSecret}
+                                onChange={e => setScClientSecret(e.target.value)}
+                                spellCheck={false}
+                                disabled={scBusy}
+                                placeholder={scStatus.configured ? '••••••••••••••••' : ''}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button onClick={saveSoundCloud} disabled={scBusy} className="pro-button">
+                            Save
+                        </button>
+                        <button onClick={validateSoundCloud} disabled={scBusy} className="pro-button-secondary">
+                            Validate
+                        </button>
+                        <button onClick={clearSoundCloud} disabled={scBusy} className="pro-button-secondary">
+                            Clear
+                        </button>
+                        <button onClick={() => { void refreshSoundCloud(); }} disabled={scBusy} className="pro-button-secondary">
+                            Refresh
+                        </button>
+                    </div>
+
+                    {scInfo && <div className="text-sm text-emerald-300/90">{scInfo}</div>}
+                    {scError && <div className="text-sm text-rose-400">{scError}</div>}
                 </div>
 
                 <div className="bg-neutral-900/40 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
                     <div className="flex items-start gap-3">
                         <AlertTriangle className="text-amber-300 mt-0.5" size={18} />
                         <div className="space-y-1">
-                            <p className="text-sm text-white font-medium">Reset Kitty</p>
+                            <p className="text-sm text-white font-medium">Reset app data</p>
                             <p className="text-xs text-neutral-400 leading-relaxed">
                                 This clears Kitty&apos;s saved library list and local UI data (artist images, downloader consent/folder,
-                                sort/filter preferences). It does not delete your music files or revert tag changes.
+                                sort/filter preferences), plus any saved SoundCloud login/credentials. It does not delete your music files or revert tag changes.
                             </p>
                         </div>
                     </div>
