@@ -13,7 +13,8 @@ const findFile = (file) => {
 
         dir = join(dir, '../');
     }
-}
+    return undefined;
+};
 
 const root = findFile('.git');
 const pack = findFile('package.json');
