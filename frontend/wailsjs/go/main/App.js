@@ -74,6 +74,30 @@ export function SetVolume(arg1) {
   return window['go']['main']['App']['SetVolume'](arg1);
 }
 
+export function SoundCloudBeginAuth() {
+  return window['go']['main']['App']['SoundCloudBeginAuth']();
+}
+
+export function SoundCloudListLikes(arg1) {
+  return window['go']['main']['App']['SoundCloudListLikes'](arg1);
+}
+
+export function SoundCloudLogout() {
+  return window['go']['main']['App']['SoundCloudLogout']();
+}
+
+export function SoundCloudSetCredentials(arg1, arg2) {
+  return window['go']['main']['App']['SoundCloudSetCredentials'](arg1, arg2);
+}
+
+export function SoundCloudStatus() {
+  return window['go']['main']['App']['SoundCloudStatus']();
+}
+
+export function SoundCloudValidateCredentials() {
+  return window['go']['main']['App']['SoundCloudValidateCredentials']();
+}
+
 export function StartDownloader() {
   return window['go']['main']['App']['StartDownloader']();
 }
