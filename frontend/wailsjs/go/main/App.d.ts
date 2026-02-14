@@ -3,6 +3,7 @@
 import {library} from '../models';
 import {downloader} from '../models';
 import {metadata} from '../models';
+import {soundcloud} from '../models';
 
 export function AddFiles(arg1:Array<string>):Promise<library.BatchResult>;
 
@@ -39,6 +40,18 @@ export function SeekAudio(arg1:number):Promise<void>;
 export function SelectFiles():Promise<Array<string>>;
 
 export function SetVolume(arg1:number):Promise<void>;
+
+export function SoundCloudBeginAuth():Promise<string>;
+
+export function SoundCloudListLikes(arg1:string):Promise<soundcloud.LikesPage>;
+
+export function SoundCloudLogout():Promise<void>;
+
+export function SoundCloudSetCredentials(arg1:string,arg2:string):Promise<void>;
+
+export function SoundCloudStatus():Promise<soundcloud.AuthStatus>;
+
+export function SoundCloudValidateCredentials():Promise<void>;
 
 export function StartDownloader():Promise<void>;
 
