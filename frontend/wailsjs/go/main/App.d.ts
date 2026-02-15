@@ -15,6 +15,8 @@ export function DownloaderStatus():Promise<downloader.Status>;
 
 export function GetAudioState():Promise<Record<string, number>>;
 
+export function GetDownloaderAutoStart():Promise<boolean>;
+
 export function LoadAudio(arg1:string):Promise<void>;
 
 export function LoadLibrary():Promise<Array<string>>;
@@ -38,6 +40,8 @@ export function SaveMetadataAndRefresh(arg1:metadata.TrackMetadata):Promise<meta
 export function SeekAudio(arg1:number):Promise<void>;
 
 export function SelectFiles():Promise<Array<string>>;
+
+export function SetDownloaderAutoStart(arg1:boolean):Promise<void>;
 
 export function SetVolume(arg1:number):Promise<void>;
 

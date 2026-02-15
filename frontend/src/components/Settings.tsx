@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Trash2, AlertTriangle } from 'lucide-react';
-import { ResetAppData, SoundCloudLogout, SoundCloudSetCredentials, SoundCloudStatus, SoundCloudValidateCredentials } from '../../wailsjs/go/main/App';
+import { GetDownloaderAutoStart, ResetAppData, SetDownloaderAutoStart, SoundCloudLogout, SoundCloudSetCredentials, SoundCloudStatus, SoundCloudValidateCredentials } from '../../wailsjs/go/main/App';
 import { useMetadata } from '../hooks/useMetadata';
 
 interface SettingsProps {
@@ -21,6 +21,12 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
     const [confirmText, setConfirmText] = useState('');
     const [isResetting, setIsResetting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const [dlAutoStart, setDlAutoStart] = useState(false);
+    const [dlBusy, setDlBusy] = useState(false);
+    const [dlInfo, setDlInfo] = useState<string | null>(null);
+    const [dlError, setDlError] = useState<string | null>(null);
+
     const [scClientId, setScClientId] = useState('');
     const [scClientSecret, setScClientSecret] = useState('');
     const [scBusy, setScBusy] = useState(false);
@@ -33,6 +39,19 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
     });
 
     const canConfirm = useMemo(() => confirmText.trim().toUpperCase() === 'RESET', [confirmText]);
+
+    const loadDownloaderSetting = async (silent = false) => {
+        try {
+            const auto = await GetDownloaderAutoStart();
+            setDlAutoStart(!!auto);
+        } catch (e: any) {
+            if (!silent) setDlError(e?.toString?.() ?? 'Failed to load downloader setting');
+        }
+    };
+
+    React.useEffect(() => {
+        void loadDownloaderSetting(true);
+    }, []);
 
     const refreshSoundCloud = async (silent = false) => {
         try {
@@ -52,6 +71,21 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
     React.useEffect(() => {
         void refreshSoundCloud(true);
     }, []);
+
+    const setDownloaderMode = async (autoStart: boolean) => {
+        setDlError(null);
+        setDlInfo(null);
+        setDlBusy(true);
+        try {
+            await SetDownloaderAutoStart(autoStart);
+            setDlAutoStart(autoStart);
+            setDlInfo(autoStart ? 'Set to start on app launch.' : 'Set to start when downloading.');
+        } catch (e: any) {
+            setDlError(e?.toString?.() ?? 'Failed to save setting');
+        } finally {
+            setDlBusy(false);
+        }
+    };
 
     const saveSoundCloud = async () => {
         setScError(null);
@@ -153,6 +187,44 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
                 </div>
 
                 <div className="bg-neutral-900/40 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">Downloader</p>
+                        <p className="text-sm text-white font-medium">Cobalt API startup</p>
+                    </div>
+
+                    <div className="text-xs text-neutral-500">
+                        Host:
+                        <span className="font-mono text-neutral-300 ml-2">http://127.0.0.1:8787</span>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="pro-label">Startup</label>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                onClick={() => void setDownloaderMode(true)}
+                                disabled={dlBusy}
+                                className={`pro-button-secondary text-xs px-3 py-2 ${dlAutoStart ? 'bg-white/10 text-white border-white/20' : ''}`}
+                            >
+                                Start on app launch
+                            </button>
+                            <button
+                                onClick={() => void setDownloaderMode(false)}
+                                disabled={dlBusy}
+                                className={`pro-button-secondary text-xs px-3 py-2 ${!dlAutoStart ? 'bg-white/10 text-white border-white/20' : ''}`}
+                            >
+                                Start when downloading
+                            </button>
+                        </div>
+                        <div className="text-xs text-neutral-500">
+                            If set to start when downloading, Kitty will start cobalt automatically when you press Download (including SoundCloud Likes).
+                        </div>
+                    </div>
+
+                    {dlInfo && <div className="text-sm text-emerald-300/90">{dlInfo}</div>}
+                    {dlError && <div className="text-sm text-rose-400">{dlError}</div>}
+                </div>
+
+                <div className="bg-neutral-900/40 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
                     <div className="flex items-start justify-between gap-4 flex-wrap">
                         <div className="space-y-1">
                             <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">SoundCloud</p>
@@ -227,7 +299,7 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
                         <div className="space-y-1">
                             <p className="text-sm text-white font-medium">Reset app data</p>
                             <p className="text-xs text-neutral-400 leading-relaxed">
-                                This clears Kitty&apos;s saved library list and local UI data (artist images, downloader consent/folder,
+                                This clears Kitty&apos;s saved library list and local UI data (artist images, downloader folder,
                                 sort/filter preferences), plus any saved SoundCloud login/credentials. It does not delete your music files or revert tag changes.
                             </p>
                         </div>

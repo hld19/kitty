@@ -19,7 +19,6 @@ type DownloadState = {
 interface Props {
     metadataHook: ReturnType<typeof useMetadata>;
     openSettings: () => void;
-    consentEnabled: boolean;
     downloadDir: string;
     pickDirectory: () => Promise<void>;
     audioFormat: string;
@@ -31,7 +30,6 @@ interface Props {
 export const SoundCloudLikes: React.FC<Props> = ({
     metadataHook,
     openSettings,
-    consentEnabled,
     downloadDir,
     pickDirectory,
     audioFormat,
@@ -201,17 +199,13 @@ export const SoundCloudLikes: React.FC<Props> = ({
         void loadAllLikes();
     }, [status.connected, autoLoaded]);
 
-    const canDownload = useMemo(() => consentEnabled && !!downloadDir, [consentEnabled, downloadDir]);
+    const canDownload = useMemo(() => !!downloadDir, [downloadDir]);
 
     const downloadTrack = async (t: Track) => {
         const url = (t.permalinkUrl || '').trim();
         if (!url) return;
         clearIndicatorTimer(url);
 
-        if (!consentEnabled) {
-            setIndicator(url, { state: 'error', message: 'Enable the downloader in Direct view first.' });
-            return;
-        }
         if (!downloadDir) {
             setIndicator(url, { state: 'error', message: 'Choose a download folder first.' });
             return;
@@ -355,11 +349,6 @@ export const SoundCloudLikes: React.FC<Props> = ({
                             {loadInfo ?? `${tracks.length} likes`}
                             {query.trim() ? <span className="text-neutral-600"> • {filtered.length} shown</span> : null}
                         </div>
-                        {!consentEnabled && (
-                            <div className="text-xs text-amber-300/90">
-                                Enable the downloader in the Direct view to download.
-                            </div>
-                        )}
                     </div>
                 )}
 
@@ -413,7 +402,7 @@ export const SoundCloudLikes: React.FC<Props> = ({
                                 title={
                                     downloadState[t.permalinkUrl]?.state === 'error'
                                         ? (downloadState[t.permalinkUrl]?.message || 'Download failed')
-                                        : (!canDownload ? 'Enable downloader in Direct view and choose a download folder.' : '')
+                                        : (!canDownload ? 'Choose a download folder first.' : '')
                                 }
                                 className={
                                     downloadState[t.permalinkUrl]?.state === 'success'
