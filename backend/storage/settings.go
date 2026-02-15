@@ -8,6 +8,7 @@ import (
 
 type Settings struct {
 	SoundCloud SoundCloudSettings `json:"soundcloud"`
+	Downloader DownloaderSettings `json:"downloader"`
 }
 
 type SoundCloudSettings struct {
@@ -18,6 +19,10 @@ type SoundCloudSettings struct {
 	RefreshToken string `json:"refreshToken"`
 	ExpiresAt    int64  `json:"expiresAt"`
 	Username     string `json:"username"`
+}
+
+type DownloaderSettings struct {
+	AutoStart bool `json:"autoStart"`
 }
 
 func settingsPath() string {
