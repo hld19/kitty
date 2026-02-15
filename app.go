@@ -37,6 +37,14 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	set, err := storage.LoadSettings()
+	if err != nil {
+		log.Printf("[app] load settings failed: %v", err)
+		return
+	}
+	if !set.Downloader.AutoStart {
+		return
+	}
 	go func() {
 		if err := a.downloader.Start(ctx); err != nil {
 			log.Printf("[app] downloader auto-start failed: %v", err)
@@ -133,6 +141,23 @@ func (a *App) StartDownloader() error {
 
 func (a *App) StopDownloader() {
 	a.downloader.Stop()
+}
+
+func (a *App) GetDownloaderAutoStart() (bool, error) {
+	set, err := storage.LoadSettings()
+	if err != nil {
+		return false, err
+	}
+	return set.Downloader.AutoStart, nil
+}
+
+func (a *App) SetDownloaderAutoStart(enabled bool) error {
+	set, err := storage.LoadSettings()
+	if err != nil {
+		return err
+	}
+	set.Downloader.AutoStart = enabled
+	return storage.SaveSettings(set)
 }
 
 func (a *App) ResetAppData() error {

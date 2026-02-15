@@ -22,6 +22,10 @@ export function GetAudioState() {
   return window['go']['main']['App']['GetAudioState']();
 }
 
+export function GetDownloaderAutoStart() {
+  return window['go']['main']['App']['GetDownloaderAutoStart']();
+}
+
 export function LoadAudio(arg1) {
   return window['go']['main']['App']['LoadAudio'](arg1);
 }
@@ -68,6 +72,10 @@ export function SeekAudio(arg1) {
 
 export function SelectFiles() {
   return window['go']['main']['App']['SelectFiles']();
+}
+
+export function SetDownloaderAutoStart(arg1) {
+  return window['go']['main']['App']['SetDownloaderAutoStart'](arg1);
 }
 
 export function SetVolume(arg1) {
