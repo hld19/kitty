@@ -365,12 +365,26 @@ func (c *Client) getNodePath() (string, error) {
 		if v := strings.TrimSpace(os.Getenv("ProgramFiles(x86)")); v != "" {
 			candidates = append(candidates, filepath.Join(v, "nodejs", "node.exe"))
 		}
+		if v := strings.TrimSpace(os.Getenv("ProgramData")); v != "" {
+			candidates = append(candidates, filepath.Join(v, "chocolatey", "bin", "node.exe"))
+		}
 		if v := strings.TrimSpace(os.Getenv("LocalAppData")); v != "" {
-			candidates = append(candidates, filepath.Join(v, "Programs", "nodejs", "node.exe"))
+			candidates = append(candidates,
+				filepath.Join(v, "Programs", "nodejs", "node.exe"),
+				filepath.Join(v, "Microsoft", "WindowsApps", "node.exe"),
+				filepath.Join(v, "Microsoft", "WinGet", "Links", "node.exe"),
+			)
+		}
+		if home, herr := os.UserHomeDir(); herr == nil && home != "" {
+			candidates = append(candidates,
+				filepath.Join(home, "scoop", "shims", "node.exe"),
+				filepath.Join(home, "AppData", "Local", "Programs", "nodejs", "node.exe"),
+			)
 		}
 		candidates = append(candidates,
 			`C:\Program Files\nodejs\node.exe`,
 			`C:\Program Files (x86)\nodejs\node.exe`,
+			`C:\ProgramData\chocolatey\bin\node.exe`,
 		)
 	} else {
 		candidates = append(candidates,
@@ -462,9 +476,20 @@ func (c *Client) lookPath(file string) (string, error) {
 		if v := strings.TrimSpace(os.Getenv("ProgramFiles(x86)")); v != "" {
 			extra = append(extra, filepath.Join(v, "nodejs"))
 		}
-		if v := strings.TrimSpace(os.Getenv("LocalAppData")); v != "" {
-			extra = append(extra, filepath.Join(v, "Programs", "nodejs"))
+		if v := strings.TrimSpace(os.Getenv("ProgramData")); v != "" {
+			extra = append(extra, filepath.Join(v, "chocolatey", "bin"))
 		}
+		if v := strings.TrimSpace(os.Getenv("LocalAppData")); v != "" {
+			extra = append(extra,
+				filepath.Join(v, "Programs", "nodejs"),
+				filepath.Join(v, "Microsoft", "WindowsApps"),
+				filepath.Join(v, "Microsoft", "WinGet", "Links"),
+			)
+		}
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			extra = append(extra, filepath.Join(home, "scoop", "shims"))
+		}
+		extra = append(extra, strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))...)
 	} else {
 		extra = append(extra, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
 	}

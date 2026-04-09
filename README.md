@@ -31,7 +31,7 @@ Cross-platform desktop music library and metadata manager with a floating dock, 
 ## SoundCloud Setup
 SoundCloud requires your own app credentials.
 
-1. Create a SoundCloud app and set the redirect URI to:
+1. [Create a SoundCloud app](https://soundcloud.com/you/apps/new) and set the redirect URL to:
    - `http://127.0.0.1:17877/oauth/soundcloud/callback`
 2. In Kitty: open `Settings` and paste your SoundCloud `Client ID` and `Client Secret`.
 3. Go to `Downloader` → `SoundCloud Likes` and press `Connect`.

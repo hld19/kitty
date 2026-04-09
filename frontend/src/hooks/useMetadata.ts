@@ -52,12 +52,13 @@ export function useMetadata() {
             const res = await AddFiles(paths);
             if (res?.tracks) {
                 setFileList(res.tracks);
-                if (!currentTrack && res.tracks.length > 0) {
-                    setCurrentTrack(res.tracks[0]);
-                } else if (currentTrack) {
-                    const updated = res.tracks.find(t => t.filePath === currentTrack.filePath);
-                    if (updated) setCurrentTrack(updated);
-                }
+                setCurrentTrack(prev => {
+                    if (!prev) {
+                        return res.tracks[0] ?? null;
+                    }
+                    const updated = res.tracks.find(t => t.filePath === prev.filePath);
+                    return updated ?? prev;
+                });
             }
             if (res?.errors && res.errors.length > 0) {
                 setError(res.errors.join('\n'));
@@ -88,6 +89,16 @@ export function useMetadata() {
         }
     };
 
+    const applyTrackUpdates = (updatedTracks: metadata.TrackMetadata[]) => {
+        if (!updatedTracks || updatedTracks.length === 0) return;
+        const byPath = new Map(updatedTracks.map(t => [t.filePath, t]));
+        setFileList(prev => prev.map(t => byPath.get(t.filePath) ?? t));
+        setCurrentTrack(prev => {
+            if (!prev) return prev;
+            return byPath.get(prev.filePath) ?? prev;
+        });
+    };
+
     const updateField = (field: keyof metadata.TrackMetadata, value: any) => {
         if (!currentTrack) return;
         const updated = new metadata.TrackMetadata({ ...currentTrack });
@@ -114,6 +125,7 @@ export function useMetadata() {
         addFilesByPath,
         selectTrack,
         saveTrack,
+        applyTrackUpdates,
         updateField,
         setCurrentTrack
     };

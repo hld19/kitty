@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"kitty/backend/audio"
 	"kitty/backend/downloader"
 	"kitty/backend/library"
+	"kitty/backend/media"
 	"kitty/backend/metadata"
 	"kitty/backend/soundcloud"
 	"kitty/backend/storage"
@@ -22,7 +24,49 @@ type App struct {
 	player     *audio.AudioPlayer
 	library    *library.Manager
 	downloader *downloader.Client
+	media      *media.Service
 	sc         *soundcloud.Service
+}
+
+type BulkMetadataPatch struct {
+	ApplyAlbumArtist bool   `json:"applyAlbumArtist"`
+	AlbumArtist      string `json:"albumArtist"`
+	ApplyArtist      bool   `json:"applyArtist"`
+	Artist           string `json:"artist"`
+	ApplyAlbum       bool   `json:"applyAlbum"`
+	Album            string `json:"album"`
+	ApplyGenre       bool   `json:"applyGenre"`
+	Genre            string `json:"genre"`
+	ApplyYear        bool   `json:"applyYear"`
+	Year             int    `json:"year"`
+	ApplyCoverImage  bool   `json:"applyCoverImage"`
+	CoverImage       string `json:"coverImage"`
+	ApplyComment     bool   `json:"applyComment"`
+	Comment          string `json:"comment"`
+}
+
+type BulkUpdateError struct {
+	FilePath string `json:"filePath"`
+	Error    string `json:"error"`
+}
+
+type BulkUpdateResult struct {
+	Total     int                      `json:"total"`
+	Succeeded int                      `json:"succeeded"`
+	Failed    int                      `json:"failed"`
+	Updated   []metadata.TrackMetadata `json:"updated"`
+	Errors    []BulkUpdateError        `json:"errors"`
+}
+
+type ExtractAudioResult struct {
+	SavedPath    string                  `json:"savedPath"`
+	UpdatedTrack *metadata.TrackMetadata `json:"updatedTrack,omitempty"`
+	Errors       []string                `json:"errors,omitempty"`
+}
+
+type TrimResult struct {
+	UpdatedTrack *metadata.TrackMetadata `json:"updatedTrack,omitempty"`
+	Backup       *media.TrimBackup       `json:"backup,omitempty"`
 }
 
 func NewApp() *App {
@@ -31,12 +75,16 @@ func NewApp() *App {
 		player:     audio.NewAudioPlayer(),
 		library:    library.NewManager(),
 		downloader: downloader.New(filepath.Join(root, "api")),
+		media:      media.NewService(),
 		sc:         soundcloud.New("http://127.0.0.1:17877/oauth/soundcloud/callback", "127.0.0.1:17877"),
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	if err := a.media.CleanupExpiredBackups(); err != nil {
+		log.Printf("[app] trim backup cleanup failed: %v", err)
+	}
 	set, err := storage.LoadSettings()
 	if err != nil {
 		log.Printf("[app] load settings failed: %v", err)
@@ -173,6 +221,9 @@ func (a *App) ResetAppData() error {
 	if err := metadata.ClearSidecarCache(); err != nil {
 		return err
 	}
+	if err := a.media.ClearBackups(); err != nil {
+		return err
+	}
 
 	a.library = library.NewManager()
 	return nil
@@ -183,6 +234,55 @@ func (a *App) ChooseDownloadFolder() (string, error) {
 		Title: "Select download folder",
 	})
 	return dir, err
+}
+
+func (a *App) SelectVideoFile() (string, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Video File",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Video Files", Pattern: "*.mp4;*.mkv;*.mov;*.webm;*.avi;*.m4v;*.flv"},
+		},
+	})
+	return path, err
+}
+
+func (a *App) ExtractAudioFromVideo(videoPath string, targetDir string, format string) (*ExtractAudioResult, error) {
+	videoPath = strings.TrimSpace(videoPath)
+	if videoPath == "" {
+		return nil, fmt.Errorf("video path is required")
+	}
+	targetDir = strings.TrimSpace(targetDir)
+	if targetDir == "" {
+		return nil, fmt.Errorf("target directory is required")
+	}
+
+	outPath, err := a.media.ExtractAudio(a.ctx, videoPath, targetDir, format)
+	if err != nil {
+		return nil, err
+	}
+
+	res, addErr := a.library.AddFiles([]string{outPath})
+	if addErr != nil {
+		return &ExtractAudioResult{
+			SavedPath: outPath,
+			Errors:    []string{addErr.Error()},
+		}, nil
+	}
+
+	var updated *metadata.TrackMetadata
+	for i := range res.Tracks {
+		if res.Tracks[i].FilePath == outPath {
+			cp := res.Tracks[i]
+			updated = &cp
+			break
+		}
+	}
+
+	return &ExtractAudioResult{
+		SavedPath:    outPath,
+		UpdatedTrack: updated,
+		Errors:       res.Errors,
+	}, nil
 }
 
 func (a *App) DownloadMedia(link string, targetDir string, format string, bitrate string) (*downloader.DownloadResult, error) {
@@ -272,6 +372,88 @@ func (a *App) SoundCloudListLikes(nextHref string) (*soundcloud.LikesPage, error
 	return a.sc.ListLikes(a.ctx, nextHref)
 }
 
+func (a *App) BulkUpdateMetadata(paths []string, patch BulkMetadataPatch) (*BulkUpdateResult, error) {
+	unique := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		unique = append(unique, p)
+	}
+
+	result := &BulkUpdateResult{
+		Total:   len(unique),
+		Updated: make([]metadata.TrackMetadata, 0, len(unique)),
+		Errors:  make([]BulkUpdateError, 0),
+	}
+	if len(unique) == 0 {
+		return result, nil
+	}
+
+	for _, path := range unique {
+		md, err := metadata.LoadMetadata(path)
+		if err != nil {
+			result.Errors = append(result.Errors, BulkUpdateError{
+				FilePath: path,
+				Error:    err.Error(),
+			})
+			continue
+		}
+		if md == nil {
+			result.Errors = append(result.Errors, BulkUpdateError{
+				FilePath: path,
+				Error:    "metadata not available",
+			})
+			continue
+		}
+
+		build := *md
+		if patch.ApplyAlbumArtist {
+			build.AlbumArtist = patch.AlbumArtist
+		}
+		if patch.ApplyArtist {
+			build.Artist = patch.Artist
+		}
+		if patch.ApplyAlbum {
+			build.Album = patch.Album
+		}
+		if patch.ApplyGenre {
+			build.Genre = patch.Genre
+		}
+		if patch.ApplyYear {
+			build.Year = patch.Year
+		}
+		if patch.ApplyCoverImage {
+			build.CoverImage = strings.TrimSpace(patch.CoverImage)
+			build.HasCover = build.CoverImage != ""
+		}
+		if patch.ApplyComment {
+			build.Comment = patch.Comment
+		}
+
+		updated, updateErr := a.library.UpdateAndReload(build)
+		if updateErr != nil {
+			result.Errors = append(result.Errors, BulkUpdateError{
+				FilePath: path,
+				Error:    updateErr.Error(),
+			})
+			continue
+		}
+
+		result.Updated = append(result.Updated, updated)
+	}
+
+	result.Succeeded = len(result.Updated)
+	result.Failed = len(result.Errors)
+	return result, nil
+}
+
 func applyMetaHints(lib *library.Manager, path string, hints map[string]interface{}) *metadata.TrackMetadata {
 	build := metadata.TrackMetadata{FilePath: path, FileName: filepath.Base(path)}
 
@@ -324,8 +506,6 @@ func applyMetaHints(lib *library.Manager, path string, hints map[string]interfac
 			}
 		}
 	}
-	setString("date", &build.Comment)
-
 	if build.Title == "" && build.FileName != "" {
 		build.Title = strings.TrimSuffix(build.FileName, filepath.Ext(build.FileName))
 	}
@@ -476,4 +656,56 @@ func parseBitrate(s string) int {
 		return n
 	}
 	return 0
+}
+
+func (a *App) GetTrimWaveform(path string, points int) (*media.WaveformResult, error) {
+	return a.media.GetWaveform(a.ctx, path, points)
+}
+
+func (a *App) TrimTrack(path string, startMs int64, endMs int64, mode string) (*TrimResult, error) {
+	backup, err := a.media.TrimTrack(a.ctx, path, startMs, endMs, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	var updated *metadata.TrackMetadata
+	if md, loadErr := metadata.LoadMetadata(path); loadErr == nil && md != nil {
+		synced := a.library.ApplyMetadata(path, *md)
+		updated = &synced
+	} else if loadErr != nil {
+		log.Printf("[app] trim completed but metadata reload failed: %v", loadErr)
+	}
+
+	return &TrimResult{
+		UpdatedTrack: updated,
+		Backup:       backup,
+	}, nil
+}
+
+func (a *App) ListTrimBackups(path string) ([]media.TrimBackup, error) {
+	return a.media.ListBackups(path)
+}
+
+func (a *App) RestoreTrimBackup(backupID string) (*TrimResult, error) {
+	backup, err := a.media.RestoreBackup(backupID)
+	if err != nil {
+		return nil, err
+	}
+
+	var updated *metadata.TrackMetadata
+	if md, loadErr := metadata.LoadMetadata(backup.OriginalPath); loadErr == nil && md != nil {
+		synced := a.library.ApplyMetadata(backup.OriginalPath, *md)
+		updated = &synced
+	} else if loadErr != nil {
+		log.Printf("[app] restore completed but metadata reload failed: %v", loadErr)
+	}
+
+	return &TrimResult{
+		UpdatedTrack: updated,
+		Backup:       backup,
+	}, nil
+}
+
+func (a *App) DeleteTrimBackup(backupID string) error {
+	return a.media.DeleteBackup(backupID)
 }

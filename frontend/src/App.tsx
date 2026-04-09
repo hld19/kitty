@@ -10,12 +10,16 @@ import { useMetadata } from './hooks/useMetadata';
 import { usePlayer } from './hooks/usePlayer';
 import { useArtistImages } from './hooks/useArtistImages';
 import { ArtistLibrary } from './components/ArtistLibrary';
-import { OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime';
+import { Environment, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime';
 import { X } from 'lucide-react';
 import { Settings } from './components/Settings';
+import { BulkEditor } from './components/BulkEditor';
+import { ImportHub } from './components/ImportHub';
+import { TrimEditor } from './components/TrimEditor';
 
 function App() {
     const [activeTab, setActiveTab] = useState('library');
+    const [platform, setPlatform] = useState('');
     const metadataHook = useMetadata();
     const playerHook = usePlayer();
     const artistImagesHook = useArtistImages();
@@ -33,14 +37,43 @@ function App() {
         };
     }, []);
 
+    useEffect(() => {
+        let mounted = true;
+        Environment()
+            .then((env) => {
+                if (!mounted) return;
+                setPlatform((env?.platform || '').toLowerCase());
+            })
+            .catch(() => {
+                if (!mounted) return;
+                const fallback = navigator?.userAgent?.toLowerCase?.() || '';
+                if (fallback.includes('windows')) setPlatform('windows');
+                else if (fallback.includes('mac')) setPlatform('darwin');
+                else if (fallback.includes('linux')) setPlatform('linux');
+            });
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
     const showLoader = metadataHook.isBooting || metadataHook.isSyncing || metadataHook.isLoading;
-    const showLanding = fileList.length === 0 && activeTab !== 'downloader' && activeTab !== 'settings' && !metadataHook.isBooting && !metadataHook.isLoading && !metadataHook.isSyncing;
+    const isWindows = platform === 'windows';
+    const showLanding =
+        fileList.length === 0 &&
+        activeTab !== 'downloader' &&
+        activeTab !== 'settings' &&
+        activeTab !== 'bulk' &&
+        activeTab !== 'import' &&
+        activeTab !== 'trim' &&
+        !metadataHook.isBooting &&
+        !metadataHook.isLoading &&
+        !metadataHook.isSyncing;
 
     return (
         <div className="h-full w-full text-neutral-200 relative selection:bg-neutral-700/50 bg-[#0b0b0f]">
-            <div className="app-shell h-full w-full relative flex flex-col">
+            <div className={`app-shell h-full w-full relative flex flex-col ${isWindows ? 'rounded-2xl overflow-hidden' : ''}`}>
                 {metadataHook.error && (
-                    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 w-[min(720px,calc(100vw-2rem))] px-4">
+                    <div className={`absolute ${isWindows ? 'top-4' : 'top-16'} left-1/2 -translate-x-1/2 z-50 w-[min(720px,calc(100vw-2rem))] px-4`}>
                         <div className="rounded-2xl border border-rose-500/20 bg-rose-950/40 backdrop-blur-xl shadow-2xl shadow-black/40 p-4 flex gap-3 items-start">
                             <div className="flex-1 min-w-0">
                                 <p className="text-xs uppercase tracking-[0.18em] text-rose-300/90">Error</p>
@@ -62,16 +95,18 @@ function App() {
                         </div>
                     </div>
                 )}
-                <div className="h-14 z-20 bg-neutral-950/90 backdrop-blur flex items-center justify-between pl-24 pr-4 md:pr-6 window-drag">
-                    <div className="flex items-center gap-3 no-drag">
-                        <span className="text-[11px] uppercase tracking-[0.3em] text-neutral-400">Kitty</span>
-                        <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/80 capitalize">
-                            {activeTab}
-                        </span>
+                {!isWindows && (
+                    <div className="h-14 z-20 bg-neutral-950/90 backdrop-blur flex items-center justify-between pl-24 pr-4 md:pr-6 window-drag">
+                        <div className="flex items-center gap-3 no-drag">
+                            <span className="text-[11px] uppercase tracking-[0.3em] text-neutral-400">Kitty</span>
+                            <span className="text-xs px-2 py-1 rounded-full bg-white/10 text-white/80 capitalize">
+                                {activeTab}
+                            </span>
+                        </div>
                     </div>
-                </div>
+                )}
 
-                <div className="flex-1 min-h-0 relative z-10 pt-3 pb-3 overflow-hidden">
+                <div className={`flex-1 min-h-0 relative z-10 ${isWindows ? 'pt-1 pb-2' : 'pt-3 pb-3'} overflow-hidden`}>
                     {showLanding ? (
                         <LandingPage onImport={importFiles} />
                     ) : (
@@ -94,6 +129,12 @@ function App() {
                             {activeTab === 'editor' && (
                                 <MetadataEditor metadataHook={metadataHook} playerHook={playerHook} />
                             )}
+                            {activeTab === 'import' && (
+                                <ImportHub metadataHook={metadataHook} />
+                            )}
+                            {activeTab === 'trim' && (
+                                <TrimEditor metadataHook={metadataHook} />
+                            )}
                             {activeTab === 'covers' && (
                                  <ArtworkEditor metadataHook={metadataHook} />
                             )}
@@ -102,6 +143,9 @@ function App() {
                             )}
                             {activeTab === 'downloader' && (
                                 <Downloader metadataHook={metadataHook} openSettings={() => setActiveTab('settings')} />
+                            )}
+                            {activeTab === 'bulk' && (
+                                <BulkEditor metadataHook={metadataHook} />
                             )}
                             {activeTab === 'settings' && (
                                 <Settings metadataHook={metadataHook} />
@@ -126,7 +170,7 @@ function App() {
                     <Dock 
                         activeTab={activeTab} 
                         setActiveTab={setActiveTab} 
-                        onAddFiles={importFiles}
+                        onOpenImport={() => setActiveTab('import')}
                     />
                 )}
             </div>

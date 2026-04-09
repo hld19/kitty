@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Trash2, AlertTriangle } from 'lucide-react';
-import { GetDownloaderAutoStart, ResetAppData, SetDownloaderAutoStart, SoundCloudLogout, SoundCloudSetCredentials, SoundCloudStatus, SoundCloudValidateCredentials } from '../../wailsjs/go/main/App';
+import { DeleteTrimBackup, GetDownloaderAutoStart, ListTrimBackups, ResetAppData, RestoreTrimBackup, SetDownloaderAutoStart, SoundCloudLogout, SoundCloudSetCredentials, SoundCloudStatus, SoundCloudValidateCredentials } from '../../wailsjs/go/main/App';
 import { useMetadata } from '../hooks/useMetadata';
 
 interface SettingsProps {
@@ -14,6 +14,8 @@ const STORAGE_KEYS = [
     'kitty_downloader_dir',
     'kitty_sortBy',
     'kitty_filterBy',
+    'kitty_song_sortBy',
+    'kitty_song_filter',
 ];
 
 export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
@@ -37,6 +39,18 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
         connected: false,
         username: '',
     });
+    const [trimBackups, setTrimBackups] = useState<Array<{
+        id: string;
+        originalPath: string;
+        createdAt: number;
+        expiresAt: number;
+        mode: string;
+        startMs: number;
+        endMs: number;
+    }>>([]);
+    const [trimBusy, setTrimBusy] = useState(false);
+    const [trimInfo, setTrimInfo] = useState<string | null>(null);
+    const [trimError, setTrimError] = useState<string | null>(null);
 
     const canConfirm = useMemo(() => confirmText.trim().toUpperCase() === 'RESET', [confirmText]);
 
@@ -70,6 +84,19 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
 
     React.useEffect(() => {
         void refreshSoundCloud(true);
+    }, []);
+
+    const loadTrimBackups = async (silent = false) => {
+        try {
+            const list = await ListTrimBackups('');
+            setTrimBackups(Array.isArray(list) ? (list as any[]) : []);
+        } catch (e: any) {
+            if (!silent) setTrimError(e?.toString?.() ?? 'Failed to load trim backups');
+        }
+    };
+
+    React.useEffect(() => {
+        void loadTrimBackups(true);
     }, []);
 
     const setDownloaderMode = async (autoStart: boolean) => {
@@ -156,6 +183,39 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
             setScError(e?.toString?.() ?? 'Failed to disconnect');
         } finally {
             setScBusy(false);
+        }
+    };
+
+    const restoreBackup = async (backupID: string) => {
+        setTrimBusy(true);
+        setTrimInfo(null);
+        setTrimError(null);
+        try {
+            const res = await RestoreTrimBackup(backupID);
+            const updated = (res as any)?.updatedTrack;
+            if (updated) {
+                metadataHook.applyTrackUpdates?.([updated]);
+            }
+            await loadTrimBackups(true);
+            setTrimInfo('Backup restored.');
+        } catch (e: any) {
+            setTrimError(e?.toString?.() ?? 'Failed to restore backup');
+        } finally {
+            setTrimBusy(false);
+        }
+    };
+
+    const deleteBackup = async (backupID: string) => {
+        setTrimBusy(true);
+        setTrimInfo(null);
+        setTrimError(null);
+        try {
+            await DeleteTrimBackup(backupID);
+            await loadTrimBackups(true);
+        } catch (e: any) {
+            setTrimError(e?.toString?.() ?? 'Failed to delete backup');
+        } finally {
+            setTrimBusy(false);
         }
     };
 
@@ -291,6 +351,60 @@ export const Settings: React.FC<SettingsProps> = ({ metadataHook }) => {
 
                     {scInfo && <div className="text-sm text-emerald-300/90">{scInfo}</div>}
                     {scError && <div className="text-sm text-rose-400">{scError}</div>}
+                </div>
+
+                <div className="bg-neutral-900/40 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                    <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">Trim Recovery</p>
+                        <p className="text-sm text-white font-medium">Restore overwritten trims</p>
+                    </div>
+
+                    <div className="text-xs text-neutral-500">
+                        Backups are kept for 30 days and auto-deleted afterwards.
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => { void loadTrimBackups(); }} disabled={trimBusy} className="pro-button-secondary text-xs px-3 py-2">
+                            Refresh
+                        </button>
+                    </div>
+
+                    {trimBackups.length === 0 ? (
+                        <div className="text-xs text-neutral-500">No active trim backups.</div>
+                    ) : (
+                        <div className="space-y-2 max-h-56 overflow-y-auto">
+                            {trimBackups.map((backup) => (
+                                <div key={backup.id} className="rounded-xl border border-white/10 bg-neutral-950/35 px-3 py-2">
+                                    <div className="text-[11px] text-neutral-300 break-all">{backup.originalPath}</div>
+                                    <div className="text-[11px] text-neutral-500">
+                                        Created: {new Date(backup.createdAt * 1000).toLocaleString()} • Expires: {new Date(backup.expiresAt * 1000).toLocaleString()}
+                                    </div>
+                                    <div className="text-[11px] text-neutral-500">
+                                        Trim: {Math.floor(backup.startMs / 1000)}s → {Math.floor(backup.endMs / 1000)}s ({backup.mode})
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <button
+                                            onClick={() => { void restoreBackup(backup.id); }}
+                                            disabled={trimBusy}
+                                            className="pro-button-secondary text-xs px-3 py-2"
+                                        >
+                                            Restore
+                                        </button>
+                                        <button
+                                            onClick={() => { void deleteBackup(backup.id); }}
+                                            disabled={trimBusy}
+                                            className="pro-button-secondary text-xs px-3 py-2"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {trimInfo && <div className="text-sm text-emerald-300/90">{trimInfo}</div>}
+                    {trimError && <div className="text-sm text-rose-400">{trimError}</div>}
                 </div>
 
                 <div className="bg-neutral-900/40 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { metadata } from '../../wailsjs/go/models';
 import { Disc, Search } from 'lucide-react';
 
@@ -8,9 +8,29 @@ interface SongLibraryProps {
     onEditTrack: (track: metadata.TrackMetadata) => void;
 }
 
+type SongSortBy = 'recent' | 'oldest' | 'title' | 'artist' | 'album';
+
+const SONG_SORT_KEY = 'kitty_song_sortBy';
+const SONG_FILTER_KEY = 'kitty_song_filter';
+
+function parseSongSort(value: string | null): SongSortBy {
+    if (value === 'recent' || value === 'oldest' || value === 'title' || value === 'artist' || value === 'album') {
+        return value;
+    }
+    return 'title';
+}
+
 export const SongLibrary: React.FC<SongLibraryProps> = ({ files, selectedFilePath, onEditTrack }) => {
-    const [query, setQuery] = useState('');
-    const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'title' | 'artist' | 'album'>('title');
+    const [query, setQuery] = useState(() => localStorage.getItem(SONG_FILTER_KEY) || '');
+    const [sortBy, setSortBy] = useState<SongSortBy>(() => parseSongSort(localStorage.getItem(SONG_SORT_KEY)));
+
+    useEffect(() => {
+        localStorage.setItem(SONG_SORT_KEY, sortBy);
+    }, [sortBy]);
+
+    useEffect(() => {
+        localStorage.setItem(SONG_FILTER_KEY, query);
+    }, [query]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();

@@ -75,7 +75,7 @@ export const MetadataEditor: React.FC<EditorProps> = ({ metadataHook, playerHook
                         </div>
                         
                         <div className="pro-panel rounded-xl p-5">
-                            <h3 className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 mb-4">Technical Details</h3>
+                            <h3 className="text-[10px] uppercase tracking-wider font-bold text-neutral-500 mb-4">info :p</h3>
                             <div className="space-y-3 text-xs">
                                 <div className="flex justify-between items-center py-1 border-b border-white/5">
                                     <span className="text-neutral-500">Format</span>

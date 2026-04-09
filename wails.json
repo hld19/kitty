@@ -12,9 +12,10 @@
   },
   "info": {
     "productName": "Kitty",
-    "productVersion": "1.2",
-    "comments": "",
-    "copyright": "(MI)"
+    "productVersion": "1.2.0",
+    "companyName": "Kitty Maintainers",
+    "comments": "Desktop music library and metadata manager",
+    "copyright": "Copyright (c) Kitty Maintainers"
   },
   "platforms": {
     "windows": {

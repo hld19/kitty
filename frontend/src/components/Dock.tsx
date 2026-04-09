@@ -1,19 +1,21 @@
 import React from 'react';
-import { Library, Tag, Mic2, Image, PlusCircle, AudioLines, DownloadCloud, Settings } from 'lucide-react';
+import { Library, Tag, Mic2, Image, PlusCircle, AudioLines, DownloadCloud, Settings, CheckSquare, Scissors } from 'lucide-react';
 import clsx from 'clsx';
 
 interface DockProps {
     activeTab: string;
     setActiveTab: (tab: string) => void;
-    onAddFiles: () => void;
+    onOpenImport: () => void;
 }
 
-export const Dock: React.FC<DockProps> = ({ activeTab, setActiveTab, onAddFiles }) => {
+export const Dock: React.FC<DockProps> = ({ activeTab, setActiveTab, onOpenImport }) => {
     const tabs = [
         { id: 'downloader', icon: DownloadCloud, label: 'Downloader' },
         { id: 'library', icon: Library, label: 'Library' },
         { id: 'songs', icon: AudioLines, label: 'Songs' },
         { id: 'editor', icon: Tag, label: 'Metadata' },
+        { id: 'trim', icon: Scissors, label: 'Trim' },
+        { id: 'bulk', icon: CheckSquare, label: 'Bulk Edit' },
         { id: 'covers', icon: Image, label: 'Artwork' },
         { id: 'lyrics', icon: Mic2, label: 'Lyrics' },
         { id: 'settings', icon: Settings, label: 'Settings' },
@@ -23,13 +25,13 @@ export const Dock: React.FC<DockProps> = ({ activeTab, setActiveTab, onAddFiles 
         <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center px-4 z-40">
             <div className="flex items-center gap-2 px-3 py-2 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.04),transparent_35%),radial-gradient(circle_at_80%_80%,rgba(0,255,213,0.04),transparent_35%),rgba(12,14,20,0.82)] backdrop-blur-[18px] border border-white/20 rounded-full shadow-[0_10px_24px_rgba(0,0,0,0.26)] pointer-events-auto">
                 <button
-                    onClick={onAddFiles}
+                    onClick={onOpenImport}
                     className="p-3 rounded-full text-neutral-900 bg-[radial-gradient(circle_at_20%_20%,#9beafe,transparent_45%),radial-gradient(circle_at_80%_80%,#fbbf24,transparent_45%),linear-gradient(120deg,#0ea5e9,#22c55e,#f97316)] hover:brightness-110 transition-all shadow-[0_10px_20px_rgba(0,0,0,0.35)] mr-1 group relative"
-                    title="Add Files"
+                    title="Import"
                 >
                     <PlusCircle size={20} strokeWidth={2} />
                     <span className="absolute -top-12 left-1/2 -translate-x-1/2 bg-neutral-900 text-white text-[10px] font-medium py-1.5 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-white/10 whitespace-nowrap shadow-xl">
-                        Add Files
+                        Import
                     </span>
                 </button>
 

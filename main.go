@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	goRuntime "runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -15,13 +16,24 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
+	width := 1120
+	height := 760
+	minWidth := 980
+	minHeight := 640
+	if goRuntime.GOOS == "windows" {
+		width = 1240
+		height = 820
+		minWidth = 1024
+		minHeight = 680
+	}
+
 	err := wails.Run(&options.App{
 		Title:     "Kitty",
-		Width:     1024,
-		Height:    768,
+		Width:     width,
+		Height:    height,
 		Frameless: false,
-		MinWidth:  960,
-		MinHeight: 640,
+		MinWidth:  minWidth,
+		MinHeight: minHeight,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -32,6 +44,7 @@ func main() {
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  false,
 			Theme:                windows.Dark,
+			ResizeDebounceMS:     16,
 		},
 		Mac: &mac.Options{
 			WebviewIsTransparent: false,

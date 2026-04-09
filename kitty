@@ -41,7 +41,7 @@ ensure_build_output_writable() {
 }
 
 run_install() {
-  npm install --prefix "$ROOT/frontend"
+  npm install --prefix "$ROOT/frontend" --no-audit --fund=false
   go mod download
 }
 

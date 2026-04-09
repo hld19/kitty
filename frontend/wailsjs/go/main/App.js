@@ -6,8 +6,16 @@ export function AddFiles(arg1) {
   return window['go']['main']['App']['AddFiles'](arg1);
 }
 
+export function BulkUpdateMetadata(arg1, arg2) {
+  return window['go']['main']['App']['BulkUpdateMetadata'](arg1, arg2);
+}
+
 export function ChooseDownloadFolder() {
   return window['go']['main']['App']['ChooseDownloadFolder']();
+}
+
+export function DeleteTrimBackup(arg1) {
+  return window['go']['main']['App']['DeleteTrimBackup'](arg1);
 }
 
 export function DownloadMedia(arg1, arg2, arg3, arg4) {
@@ -18,12 +26,24 @@ export function DownloaderStatus() {
   return window['go']['main']['App']['DownloaderStatus']();
 }
 
+export function ExtractAudioFromVideo(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExtractAudioFromVideo'](arg1, arg2, arg3);
+}
+
 export function GetAudioState() {
   return window['go']['main']['App']['GetAudioState']();
 }
 
 export function GetDownloaderAutoStart() {
   return window['go']['main']['App']['GetDownloaderAutoStart']();
+}
+
+export function GetTrimWaveform(arg1, arg2) {
+  return window['go']['main']['App']['GetTrimWaveform'](arg1, arg2);
+}
+
+export function ListTrimBackups(arg1) {
+  return window['go']['main']['App']['ListTrimBackups'](arg1);
 }
 
 export function LoadAudio(arg1) {
@@ -54,6 +74,10 @@ export function ResetAppData() {
   return window['go']['main']['App']['ResetAppData']();
 }
 
+export function RestoreTrimBackup(arg1) {
+  return window['go']['main']['App']['RestoreTrimBackup'](arg1);
+}
+
 export function SaveLibrary(arg1) {
   return window['go']['main']['App']['SaveLibrary'](arg1);
 }
@@ -72,6 +96,10 @@ export function SeekAudio(arg1) {
 
 export function SelectFiles() {
   return window['go']['main']['App']['SelectFiles']();
+}
+
+export function SelectVideoFile() {
+  return window['go']['main']['App']['SelectVideoFile']();
 }
 
 export function SetDownloaderAutoStart(arg1) {
@@ -116,4 +144,8 @@ export function StopDownloader() {
 
 export function ToggleAudio() {
   return window['go']['main']['App']['ToggleAudio']();
+}
+
+export function TrimTrack(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['TrimTrack'](arg1, arg2, arg3, arg4);
 }
